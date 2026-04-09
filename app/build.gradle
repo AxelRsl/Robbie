@@ -1,0 +1,89 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace 'com.robbie'
+    compileSdkVersion 34
+    
+    defaultConfig {
+        applicationId "com.robbie"
+        minSdkVersion 26
+        targetSdkVersion 31
+        versionCode 1
+        versionName "1.0.0"
+
+        // Azure OpenAI for product recommendations
+        // Credentials loaded from gradle.properties
+        buildConfigField "String", "AI_API_BASE_URL", "\"${project.findProperty('AI_API_BASE_URL') ?: ''}\""
+        buildConfigField "String", "AI_API_KEY", "\"${project.findProperty('AI_API_KEY') ?: ''}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+        viewBinding false
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    packagingOptions {
+        resources {
+            pickFirsts += ['META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties']
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+
+    // MQTT para videollamadas
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    implementation 'org.eclipse.paho:org.eclipse.paho.android.service:1.1.1'
+
+    // Netty para comunicaciones
+    implementation 'io.netty:netty-all:4.1.94.Final'
+
+    // RxJava para programación reactiva
+    implementation 'io.reactivex.rxjava3:rxjava:3.1.6'
+    implementation 'io.reactivex.rxjava3:rxandroid:3.0.2'
+
+    // React Native (0.71.8 con módulos nativos personalizados para bundle 0.59.10)
+    implementation 'com.facebook.react:react-android:0.71.8'
+    implementation 'com.facebook.react:hermes-android:0.71.8'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+
+    // AgentOS SDK v0.4.5 — includes Agent SDK + RobotService automatically
+    implementation 'com.orionstar.agent:sdk:0.4.5-SNAPSHOT'
+
+    // Kotlin + Coroutines (requerido por agent-sdk)
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    // Glide para carga de imagenes
+    implementation 'com.github.bumptech.glide:glide:4.15.1'
+
+    // Otras utilidades
+    implementation 'com.alibaba:fastjson:2.0.39'
+    implementation 'com.google.guava:guava:31.1-android'
+}

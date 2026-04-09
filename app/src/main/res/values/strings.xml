@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Robbie</string>
+    <string name="app_subtitle">Plataforma de robot con conexiones remotas configurables</string>
+    <string name="status_default">Usando valores por defecto de OrionStar</string>
+    <string name="btn_open_config">Configurar Conexiones Remotas</string>
+    <string name="btn_test_connection">Probar Conexion</string>
+    <string name="config_summary_title">Configuracion Activa</string>
+    <string name="remote_config_title">Configuracion Remota</string>
+    <string name="remote_config_subtitle">Modifica dominios, credenciales y endpoints</string>
+    <string name="label_active_region">Region activa:</string>
+    <string name="btn_save">Guardar</string>
+    <string name="btn_reset">Restaurar</string>
+</resources>

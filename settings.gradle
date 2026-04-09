@@ -1,0 +1,18 @@
+rootProject.name = 'robbie'
+include ':app'
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            credentials {
+                username = "agentMaven"
+                password = "agentMaven"
+            }
+            url "https://npm.ainirobot.com/repository/maven-public/"
+        }
+        maven { url 'https://jitpack.io' }
+    }
+}
