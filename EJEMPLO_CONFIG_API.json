@@ -1,0 +1,140 @@
+{
+  "persona": "Tu nombre es Robbie. Eres un asistente especializado en productos GNC de nutricion deportiva y suplementos. Eres amigable, profesional y conocedor.",
+  "objective": "Ayudar a los clientes a encontrar los productos GNC ideales segun sus necesidades de salud, fitness y nutricion.",
+  "storeName": "GNC",
+  "pageObjective": "Estas en la aplicacion de retail GNC. Puedes ayudar al cliente a: 1) Recomendar productos segun sus necesidades (proteinas, vitaminas, energia, etc.), 2) Buscar productos especificos por nombre, categoria o marca, 3) Mostrar detalles de productos, 4) Navegar entre pantallas (Home, Products, Cart, Profile).",
+  "firebaseCollection": "products",
+  "validScreens": ["Retail", "Promo", "Search", "Favorites", "Cart", "Orders", "Help", "Config"],
+  "actions": [
+    {
+      "actionId": "com.robbie.RECOMMEND_PRODUCTS",
+      "displayName": "Recomendar productos",
+      "description": "Recomienda productos GNC basandose en las necesidades del usuario y restricciones dieteticas",
+      "eventName": "recommend_products",
+      "parameters": [
+        {
+          "name": "user_need",
+          "type": "STRING",
+          "description": "Lo que necesita el usuario: proteina, vitaminas, energia, bajar de peso, ganar musculo, aumentar masa, recuperacion, resistencia, etc.",
+          "required": true
+        },
+        {
+          "name": "dietary_restriction",
+          "type": "STRING",
+          "description": "Restriccion dietetica: sin lactosa, vegano, sin gluten, keto, diabetico, sin azucar. Vacio si no hay restricciones.",
+          "required": false
+        }
+      ]
+    },
+    {
+      "actionId": "com.robbie.SEARCH_PRODUCTS",
+      "displayName": "Buscar productos",
+      "description": "Busca productos en el catalogo GNC por nombre, categoria o marca",
+      "eventName": "search_products",
+      "parameters": [
+        {
+          "name": "query",
+          "type": "STRING",
+          "description": "Texto de busqueda: nombre del producto, categoria (proteinas, vitaminas, pre-workout, etc.) o marca (Optimum Nutrition, MuscleTech, etc.)",
+          "required": true
+        }
+      ]
+    },
+    {
+      "actionId": "com.robbie.SHOW_PRODUCT_DETAIL",
+      "displayName": "Detalle de producto",
+      "description": "Muestra y describe vocalmente los detalles de un producto especifico por nombre",
+      "eventName": "show_product_detail",
+      "parameters": [
+        {
+          "name": "product_name",
+          "type": "STRING",
+          "description": "Nombre completo o parte del nombre del producto a mostrar (ej: 'whey gold standard', 'creatina', 'multivitaminico')",
+          "required": true
+        }
+      ]
+    },
+    {
+      "actionId": "com.robbie.NAVIGATE_TO_SCREEN",
+      "displayName": "Navegar a pantalla",
+      "description": "Navega a una pantalla especifica de la aplicacion",
+      "eventName": "navigate_to_screen",
+      "enumValues": ["Home", "Products", "Cart", "Profile", "Search", "Favorites"],
+      "parameters": [
+        {
+          "name": "screen",
+          "type": "ENUM",
+          "description": "Pantalla destino: Home (inicio), Products (catalogo), Cart (carrito de compras), Profile (perfil del usuario), Search (busqueda), Favorites (favoritos)",
+          "required": true
+        }
+      ]
+    },
+    {
+      "actionId": "com.robbie.COMPARE_PRODUCTS",
+      "displayName": "Comparar productos",
+      "description": "Compara dos o mas productos para ayudar al cliente a decidir",
+      "eventName": "compare_products",
+      "parameters": [
+        {
+          "name": "product1",
+          "type": "STRING",
+          "description": "Nombre del primer producto a comparar",
+          "required": true
+        },
+        {
+          "name": "product2",
+          "type": "STRING",
+          "description": "Nombre del segundo producto a comparar",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_001",
+      "name": "Proteina Whey Gold Standard",
+      "category": "Proteinas",
+      "subcategory": "Whey",
+      "price": 1299.00,
+      "discount": 15,
+      "image": "https://example.com/images/whey-gold.jpg",
+      "description": "Proteina de suero de alta calidad con 24g de proteina por porcion. Ideal para recuperacion muscular post-entrenamiento.",
+      "ingredients": "Whey protein isolate, whey protein concentrate, cocoa, natural flavors",
+      "tags": ["proteina", "whey", "musculo", "recuperacion", "post-workout"],
+      "inStock": true,
+      "sku": "WGS-2LB-CHOC",
+      "brand": "Optimum Nutrition"
+    },
+    {
+      "id": "prod_002",
+      "name": "Creatina Monohidrato Micronizada",
+      "category": "Creatina",
+      "subcategory": "Monohidrato",
+      "price": 599.00,
+      "discount": 0,
+      "image": "https://example.com/images/creatine.jpg",
+      "description": "Creatina pura micronizada para aumentar fuerza y masa muscular. 5g por porcion.",
+      "ingredients": "Creatine monohydrate",
+      "tags": ["creatina", "fuerza", "masa", "rendimiento"],
+      "inStock": true,
+      "sku": "CRT-500G",
+      "brand": "GNC"
+    },
+    {
+      "id": "prod_003",
+      "name": "Multivitaminico Mega Men",
+      "category": "Vitaminas",
+      "subcategory": "Multivitaminicos",
+      "price": 799.00,
+      "discount": 10,
+      "image": "https://example.com/images/mega-men.jpg",
+      "description": "Multivitaminico completo para hombres con vitaminas, minerales y antioxidantes.",
+      "ingredients": "Vitamins A, C, D, E, B-complex, minerals, antioxidants",
+      "tags": ["vitaminas", "salud", "energia", "inmunidad"],
+      "inStock": true,
+      "sku": "MM-90CAP",
+      "brand": "GNC"
+    }
+  ]
+}

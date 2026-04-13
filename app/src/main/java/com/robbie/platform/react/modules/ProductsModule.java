@@ -3,6 +3,7 @@ package com.robbie.platform.react.modules;
 import android.util.Log;
 
 import com.robbie.base.config.RemoteConfigManager;
+import com.robbie.base.config.RobbieConfigApiClient;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -24,14 +25,13 @@ import java.util.List;
 public class ProductsModule extends ReactContextBaseJavaModule {
     
     private static final String TAG = "ProductsModule";
-    private final OrionAuthManager authManager;
-    private final RemoteConfigManager configManager;
+    private final RobbieConfigApiClient apiClient;
     private JSONArray cachedProducts = null;
     
     public ProductsModule(ReactApplicationContext reactContext) {
         super(reactContext);
-        this.authManager = OrionAuthManager.getInstance();
-        this.configManager = RemoteConfigManager.getInstance();
+        this.apiClient = new RobbieConfigApiClient();
+        Log.i(TAG, "ProductsModule inicializado");
     }
     
     @Override
@@ -41,9 +41,11 @@ public class ProductsModule extends ReactContextBaseJavaModule {
     
     @ReactMethod
     public void getProducts(String category, Promise promise) {
+        Log.d(TAG, "getProducts llamado con category: '" + category + "'");
         new Thread(() -> {
             try {
                 JSONArray products = fetchProductsFromCloud();
+                Log.d(TAG, "Productos obtenidos: " + products.length() + " items");
                 JSONArray results = new JSONArray();
                 
                 for (int i = 0; i < products.length(); i++) {
@@ -53,6 +55,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
                     }
                 }
                 
+                Log.i(TAG, "Retornando " + results.length() + " productos (filtrados por category)");
                 promise.resolve(results.toString());
             } catch (Exception e) {
                 Log.e(TAG, "Error getting products", e);
@@ -63,9 +66,11 @@ public class ProductsModule extends ReactContextBaseJavaModule {
     
     @ReactMethod
     public void searchProducts(String query, Promise promise) {
+        Log.d(TAG, "searchProducts llamado con query: '" + query + "'");
         new Thread(() -> {
             try {
                 JSONArray products = fetchProductsFromCloud();
+                Log.d(TAG, "Buscando en " + products.length() + " productos");
                 JSONArray results = new JSONArray();
                 String lowerQuery = query.toLowerCase();
                 
@@ -98,6 +103,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
                 response.put("query", query);
                 response.put("totalResults", results.length());
                 
+                Log.i(TAG, "Busqueda completada: " + results.length() + " resultados para '" + query + "'");
                 promise.resolve(response.toString());
             } catch (Exception e) {
                 Log.e(TAG, "Error searching products", e);
@@ -129,54 +135,76 @@ public class ProductsModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void refreshProducts(Promise promise) {
+        Log.i(TAG, "refreshProducts llamado - limpiando cache");
         cachedProducts = null;
         getProducts("", promise);
     }
 
     /**
-     * Intenta obtener productos de la nube OrionStar.
-     * Primero intenta la API de apps/page de OrionBase.
-     * Luego intenta el portal AgentPOI.
-     * Si ambos fallan, usa datos mock.
+     * Obtiene productos de la API de configuracion Robbie.
+     * Si falla, usa datos mock como fallback.
      */
     private JSONArray fetchProductsFromCloud() {
         if (cachedProducts != null) {
-            Log.d(TAG, "Usando productos en cache (" + cachedProducts.length() + " items)");
+            Log.d(TAG, "[CACHE] Usando productos en cache (" + cachedProducts.length() + " items)");
             return cachedProducts;
         }
 
-        // Intento 1: API OrionBase - obtener apps/contenido
-        try {
-            Log.d(TAG, "Consultando API OrionBase para productos...");
-            String endpoint = configManager.getString(
-                RemoteConfigManager.KEY_ENDPOINT_APPS_PAGE,
-                RemoteConfigManager.DEFAULT_ENDPOINT_APPS_PAGE
-            );
-            String response = authManager.authenticatedGet(endpoint);
-            JSONObject json = new JSONObject(response);
-            
-            if (json.has("data")) {
-                JSONObject data = json.getJSONObject("data");
-                if (data.has("list")) {
-                    JSONArray apps = data.getJSONArray("list");
-                    JSONArray products = convertAppsToProducts(apps);
-                    if (products.length() > 0) {
-                        cachedProducts = products;
-                        Log.i(TAG, "Productos obtenidos de OrionBase: " + products.length());
-                        return cachedProducts;
+        Log.i(TAG, "[API] Consultando API de configuracion Robbie para productos...");
+        
+        final JSONArray[] result = new JSONArray[1];
+        final boolean[] completed = new boolean[1];
+        
+        apiClient.getProducts(new RobbieConfigApiClient.ProductsCallback() {
+            @Override
+            public void onSuccess(List<JSONObject> products) {
+                Log.i(TAG, "[API] Productos obtenidos exitosamente: " + products.size() + " items");
+                try {
+                    JSONArray array = new JSONArray();
+                    for (JSONObject product : products) {
+                        array.put(product);
+                        Log.d(TAG, "[API] Producto: " + product.optString("name", "sin nombre"));
                     }
+                    result[0] = array;
+                    cachedProducts = array;
+                } catch (Exception e) {
+                    Log.e(TAG, "[API] Error convirtiendo productos", e);
+                    result[0] = null;
                 }
+                completed[0] = true;
             }
-            Log.w(TAG, "OrionBase no devolvio productos validos");
-        } catch (Exception e) {
-            Log.w(TAG, "No se pudo conectar a OrionBase: " + e.getMessage());
+            
+            @Override
+            public void onError(String error) {
+                Log.e(TAG, "[API] Error obteniendo productos: " + error);
+                result[0] = null;
+                completed[0] = true;
+            }
+        });
+        
+        // Esperar respuesta (max 5 segundos)
+        int timeout = 0;
+        while (!completed[0] && timeout < 50) {
+            try {
+                Thread.sleep(100);
+                timeout++;
+            } catch (InterruptedException e) {
+                break;
+            }
         }
-
+        
+        if (result[0] != null && result[0].length() > 0) {
+            Log.i(TAG, "[API] Retornando " + result[0].length() + " productos de la API");
+            return result[0];
+        }
+        
         // Fallback: datos mock para demo/desarrollo
-        Log.i(TAG, "Usando datos mock como fallback");
+        Log.w(TAG, "[FALLBACK] API no respondio o fallo, usando datos mock");
         try {
             cachedProducts = getMockProductsArray();
+            Log.i(TAG, "[FALLBACK] Usando " + cachedProducts.length() + " productos mock");
         } catch (Exception e) {
+            Log.e(TAG, "[FALLBACK] Error creando productos mock", e);
             cachedProducts = new JSONArray();
         }
         return cachedProducts;

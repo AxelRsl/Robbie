@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
+import { CloudApi } from '@/services/CloudApi';
 
 interface MenuItem {
   id: string;
@@ -17,27 +18,68 @@ interface MenuItem {
   screen: string;
 }
 
-const menuItems: MenuItem[] = [
+// Definición completa de todas las pantallas disponibles
+const allMenuItems: MenuItem[] = [
   {
     id: 'retail',
-    title: 'Modo Minorista',
-    description: 'Catálogo de productos con búsqueda inteligente',
+    title: 'Productos',
+    description: 'Catálogo de productos',
     icon: '🛍️',
     color: '#00695C',
     screen: 'Retail',
   },
   {
     id: 'promo',
-    title: 'Modo Promoción',
-    description: 'Videos y ofertas especiales',
+    title: 'Promociones',
+    description: 'Ofertas especiales',
     icon: '🎬',
     color: '#FF5722',
     screen: 'Promo',
   },
   {
+    id: 'search',
+    title: 'Buscar',
+    description: 'Búsqueda por voz',
+    icon: '🔍',
+    color: '#9C27B0',
+    screen: 'Search',
+  },
+  {
+    id: 'favorites',
+    title: 'Favoritos',
+    description: 'Productos guardados',
+    icon: '⭐',
+    color: '#F57C00',
+    screen: 'Favorites',
+  },
+  {
+    id: 'cart',
+    title: 'Carrito',
+    description: 'Ver carrito',
+    icon: '🛒',
+    color: '#0288D1',
+    screen: 'Cart',
+  },
+  {
+    id: 'orders',
+    title: 'Pedidos',
+    description: 'Historial',
+    icon: '📦',
+    color: '#5E35B1',
+    screen: 'Orders',
+  },
+  {
+    id: 'help',
+    title: 'Ayuda',
+    description: 'Asistencia',
+    icon: '❓',
+    color: '#00897B',
+    screen: 'Help',
+  },
+  {
     id: 'config',
-    title: 'Configuracion',
-    description: 'Ajustes de conexion a la nube',
+    title: 'Configuración',
+    description: 'Ajustes',
     icon: '\u2699\uFE0F',
     color: '#1976D2',
     screen: 'Config',
@@ -46,6 +88,38 @@ const menuItems: MenuItem[] = [
 
 export const MenuScreen: React.FC = () => {
   const { menuTemplate, setMenuTemplate, setCurrentMode } = useAppStore();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(allMenuItems);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadValidScreens();
+  }, []);
+
+  const loadValidScreens = async () => {
+    try {
+      const config = await CloudApi.getConfig();
+      console.log('[MenuScreen] Configuración cargada:', config);
+      
+      if (config.validScreens && config.validScreens.length > 0) {
+        // Filtrar pantallas basado en validScreens de la API
+        const filtered = allMenuItems.filter(item => 
+          config.validScreens.includes(item.screen)
+        );
+        console.log('[MenuScreen] Pantallas filtradas:', filtered.length, 'de', allMenuItems.length);
+        setMenuItems(filtered);
+      } else {
+        // Si no hay validScreens, mostrar todas
+        console.log('[MenuScreen] No hay validScreens, mostrando todas');
+        setMenuItems(allMenuItems);
+      }
+    } catch (error) {
+      console.error('[MenuScreen] Error cargando configuración:', error);
+      // En caso de error, mostrar todas las pantallas
+      setMenuItems(allMenuItems);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleTemplate = () => {
     setMenuTemplate(menuTemplate === 'classic' ? 'modern' : 'classic');
@@ -54,6 +128,14 @@ export const MenuScreen: React.FC = () => {
   const handleMenuPress = (item: MenuItem) => {
     setCurrentMode(item.screen.toLowerCase());
   };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Cargando menú...</Text>
+      </View>
+    );
+  }
 
   if (menuTemplate === 'classic') {
     return (
@@ -66,7 +148,7 @@ export const MenuScreen: React.FC = () => {
         </View>
 
         <View style={styles.classicContainer}>
-          {menuItems.map((item) => (
+          {menuItems.map((item: MenuItem) => (
             <TouchableOpacity
               key={item.id}
               style={[styles.classicButton, { backgroundColor: item.color }]}
@@ -74,7 +156,7 @@ export const MenuScreen: React.FC = () => {
               activeOpacity={0.8}
             >
               <Text style={styles.classicIcon}>{item.icon}</Text>
-              <Text style={styles.classicTitle}>{item.title}</Text>
+              <Text style={styles.classicTitle} numberOfLines={1}>{item.title}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -119,56 +201,68 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  loadingText: {
+    fontSize: 16,
+    color: '#757575',
+    textAlign: 'center',
+    marginTop: 20,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
   title: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#212121',
   },
   templateButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     backgroundColor: '#9C27B0',
-    borderRadius: 20,
+    borderRadius: 16,
   },
   templateButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   classicContainer: {
     flex: 1,
-    padding: 16,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 8,
+    justifyContent: 'space-between',
+    alignContent: 'center',
   },
   classicButton: {
-    height: 120,
-    marginVertical: 12,
-    borderRadius: 16,
+    width: '23.5%',
+    aspectRatio: 1,
+    marginVertical: 4,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
-    shadowRadius: 4,
+    shadowRadius: 3,
   },
   classicIcon: {
-    fontSize: 48,
-    marginBottom: 8,
+    fontSize: 28,
+    marginBottom: 4,
   },
   classicTitle: {
-    fontSize: 20,
+    fontSize: 11,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    textAlign: 'center',
   },
   modernContainer: {
     flex: 1,

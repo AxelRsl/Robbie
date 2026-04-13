@@ -105,11 +105,21 @@ public class EveActivity extends ReactActivity {
     protected void onStart() {
         super.onStart();
         
+        // Refrescar productos desde config (puede haber cargado desde la API
+        // despues de onCreate, cuando allProducts estaba vacio)
+        RobotApp app = (RobotApp) getApplication();
+        RobbieConfig config = app.getRobbieConfig();
+        if (config != null && config.getProducts() != null && !config.getProducts().isEmpty()
+                && allProducts.isEmpty()) {
+            allProducts.addAll(config.getProducts());
+            Log.i(TAG, "Products refreshed in onStart: " + allProducts.size());
+        }
+        
         uploadCatalogInfoToAgent();
         
-        AgentCore.INSTANCE.enableWakeupMode(false);
+        AgentCore.INSTANCE.enableWakeupMode(true);
         AgentCore.INSTANCE.setEnableWakeFree(true);
-        Log.d(TAG, "Software wake word 'Robbie' — wake-free on");
+        Log.d(TAG, "Wake mode: hardware=ON, wake-free=ON");
         
         setLightSolidColor(0xFF0000);
         
@@ -162,6 +172,7 @@ public class EveActivity extends ReactActivity {
                 @Override
                 public boolean onASRResult(Transcription transcription) {
                     String text = transcription.getText().trim();
+                    Log.d(TAG, "ASR event: final=" + transcription.getFinal() + " text='" + text + "'");
                     
                     if (!transcription.getFinal()) {
                         if (!isListeningLight) setLightBlueBreathing();
@@ -177,9 +188,20 @@ public class EveActivity extends ReactActivity {
                     Log.d(TAG, "ASR final: " + text);
                     
                     String lower = text.toLowerCase();
-                    if (lower.contains("robbie") || lower.contains("robi") ||
+                    boolean hasWakeWord = lower.contains("robbie") || lower.contains("robi") ||
                         lower.contains("rubi") || lower.contains("robin") ||
-                        lower.contains("robe") || lower.contains("robby")) {
+                        lower.contains("robe") || lower.contains("robby");
+                    
+                    // Si no tiene wake word pero el texto no esta vacio, enviar directamente
+                    // al query (el hardware wake word ya filtro la activacion del mic)
+                    if (!hasWakeWord && !text.isEmpty()) {
+                        Log.d(TAG, "No wake word, sending directly to query: " + text);
+                        AgentCore.INSTANCE.query(text);
+                        emitTranscriptionEvent(text, true, true);
+                        return true;
+                    }
+                    
+                    if (hasWakeWord) {
                         String command = text.replaceAll("(?i)robbie|robi|rubi|robin|robe|robby", "").trim();
                         if (command.isEmpty()) {
                             AgentCore.INSTANCE.tts("¿Sí? ¿En qué te puedo ayudar?", 10000, null);
@@ -189,10 +211,9 @@ public class EveActivity extends ReactActivity {
                         }
                         emitTranscriptionEvent(text, true, true);
                         return true;
-                    } else {
-                        Log.d(TAG, "No wake word, ignoring: " + text);
-                        return true;
                     }
+                    
+                    return true;
                 }
                 
                 @Override
@@ -209,8 +230,8 @@ public class EveActivity extends ReactActivity {
                 // Action: respuesta alegre
                 .registerAction(new Action(
                     "com.ainirobot.lidd.action.SHOW_HAPPY",
+                    "Respuesta alegre",
                     "Responde con alegria cuando el usuario esta contento o satisfecho",
-                    null,
                     Arrays.asList(
                         new Parameter("sentence", ParameterType.STRING,
                             "Frase alegre para decir al usuario", true, null)
@@ -231,8 +252,8 @@ public class EveActivity extends ReactActivity {
                 // Action: respuesta empatica
                 .registerAction(new Action(
                     "com.ainirobot.lidd.action.SHOW_SAD",
+                    "Respuesta empatica",
                     "Responde con empatia cuando el usuario esta triste o desanimado",
-                    null,
                     Arrays.asList(
                         new Parameter("sentence", ParameterType.STRING,
                             "Frase de consuelo para el usuario", true, null)
@@ -253,8 +274,8 @@ public class EveActivity extends ReactActivity {
                 // Action: respuesta calmada
                 .registerAction(new Action(
                     "com.ainirobot.lidd.action.SHOW_ANGRY",
+                    "Respuesta calmada",
                     "Responde con calma cuando el usuario esta enojado o frustrado",
-                    null,
                     Arrays.asList(
                         new Parameter("sentence", ParameterType.STRING,
                             "Frase para calmar al usuario", true, null)
@@ -349,6 +370,26 @@ public class EveActivity extends ReactActivity {
                                 }
                             });
 
+                            action.notify(successResult(), false);
+                            return true;
+                        }
+                    }
+                ))
+                // Action: buscar productos
+                .registerAction(new Action(
+                    "com.robbie.action.search_products",
+                    "Buscar Productos",
+                    "Busca productos en el catalogo y navega a la pantalla de resultados",
+                    Arrays.asList(
+                        new Parameter("query", ParameterType.STRING,
+                            "Termino de busqueda de productos (ej: proteina, vitaminas, creatina)", true, null)
+                    ),
+                    new ActionExecutor() {
+                        @Override
+                        public boolean onExecute(Action action, Bundle params) {
+                            String query = params != null ? params.getString("query", "") : "";
+                            Log.d(TAG, "Action SEARCH: query=" + query);
+                            mainHandler.post(() -> searchProducts(query));
                             action.notify(successResult(), false);
                             return true;
                         }

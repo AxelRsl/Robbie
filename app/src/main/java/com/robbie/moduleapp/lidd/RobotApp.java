@@ -8,9 +8,11 @@ import com.robbie.BuildConfig;
 import com.robbie.base.config.RemoteConfigManager;
 import com.robbie.platform.react.PlatformReactNativeHost;
 import com.robbie.platform.retail.RobbieConfig;
+import com.robbie.platform.retail.Product;
 import com.facebook.react.ReactApplication;
 import com.facebook.react.ReactNativeHost;
 import com.ainirobot.agent.AppAgent;
+import com.ainirobot.agent.AgentCore;
 import com.ainirobot.agent.action.Action;
 import com.ainirobot.agent.action.Actions;
 
@@ -40,7 +42,7 @@ public class RobotApp extends Application implements ReactApplication {
         sInstance = this;
 
         Log.i(TAG, "========================================");
-        Log.i(TAG, "Iniciando xiabao_lidd v" + BuildConfig.VERSION_NAME);
+        Log.i(TAG, "Iniciando robbie" + BuildConfig.VERSION_NAME);
         Log.i(TAG, "========================================");
 
         // 1. Configuracion remota (siempre primero)
@@ -49,7 +51,7 @@ public class RobotApp extends Application implements ReactApplication {
         // 2. Inicializar Agent SDK (AgentOS) con persona configurable
         initializeAgentOS();
 
-        Log.i(TAG, "xiabao_lidd inicializado correctamente");
+        Log.i(TAG, "robbie inicializado correctamente");
     }
 
     private void initializeRemoteConfig() {
@@ -59,46 +61,98 @@ public class RobotApp extends Application implements ReactApplication {
     }
 
     private void initializeAgentOS() {
-        String configApiUrl = getSharedPreferences("robbie_prefs", MODE_PRIVATE)
-                .getString("config_api_url", DEFAULT_CONFIG_API);
+        // Inicializar robbieConfig con defaults INMEDIATAMENTE para que nunca sea null
+        // cuando EveActivity lea los productos en onCreate/onStart
+        robbieConfig = new RobbieConfig();
+
+        // Crear AppAgent inmediatamente (patron ROBBI-GNC: GncApplication)
+        // Sin AppAgent, el AgentOS no muestra la barra de transcripcion del sistema
+        // y las Actions no se despachan correctamente
+        createAppAgent(robbieConfig);
+
+        // Cargar config real desde API (async) y actualizar productos
+        String configApiUrl = BuildConfig.ROBBIE_CONFIG_API_URL;
+        Log.i(TAG, "Usando API URL desde BuildConfig: " + configApiUrl);
 
         RobbieConfig.loadFromApi(configApiUrl, new RobbieConfig.ConfigCallback() {
             @Override
             public void onSuccess(RobbieConfig config) {
                 robbieConfig = config;
-                createAppAgent(config);
+                uploadProductsToAgent(config);
                 Log.i(TAG, "Config loaded from API - " + config.getProducts().size() + " products");
             }
 
             @Override
             public void onError(String error) {
                 Log.w(TAG, "Failed to load config from API: " + error + ", using defaults");
-                robbieConfig = new RobbieConfig();
-                createAppAgent(robbieConfig);
+                // robbieConfig ya tiene defaults, no necesita reasignarse
             }
         });
     }
 
+    /**
+     * Crea AppAgent con persona y objetivo (patron ROBBI-GNC: GncApplication).
+     * El AppAgent registra la app con el AgentOS, lo cual:
+     * - Habilita la barra de transcripcion del sistema (ASR/TTS en pantalla)
+     * - Permite que las Actions del PageAgent reciban despachos correctamente
+     */
     private void createAppAgent(RobbieConfig config) {
-        try {
-            appAgent = new AppAgent(this) {
-                @Override
-                public void onCreate() {
-                    setPersona(config.getPersona());
-                    setObjective(config.getObjective());
-                    registerAction(Actions.SAY);
-                    Log.i(TAG, "AppAgent creado con configuracion dinamica");
-                }
+        appAgent = new AppAgent(this) {
+            @Override
+            public void onCreate() {
+                setPersona(config.getPersona());
+                setObjective(config.getObjective());
+                registerAction(Actions.SAY);
+                Log.d(TAG, "AppAgent created with persona: " + config.getStoreName());
+            }
 
-                @Override
-                public boolean onExecuteAction(Action action, Bundle params) {
-                    Log.i(TAG, "AppAgent.onExecuteAction: " + action.getName());
-                    return false;
+            @Override
+            public boolean onExecuteAction(Action action, Bundle params) {
+                return false;
+            }
+        };
+    }
+
+    private void uploadProductsToAgent(RobbieConfig config) {
+        try {
+            if (config.getProducts() == null || config.getProducts().isEmpty()) {
+                Log.w(TAG, "No hay productos para subir al agente");
+                return;
+            }
+
+            // Limitar a 20 productos para no saturar al agente (patrón ROBBI-GNC)
+            int maxProducts = Math.min(config.getProducts().size(), 20);
+            StringBuilder productsInfo = new StringBuilder();
+            productsInfo.append("Catálogo ").append(config.getStoreName())
+                       .append(" - ").append(config.getProducts().size()).append(" productos:\n");
+            
+            for (int i = 0; i < maxProducts; i++) {
+                Product product = config.getProducts().get(i);
+                productsInfo.append("- ").append(product.getName());
+                
+                if (product.getPrice() > 0) {
+                    productsInfo.append(" ($").append(String.format("%.0f", product.getPrice())).append(")");
                 }
-            };
-            Log.i(TAG, "AgentOS inicializado con AppAgent configurable");
+                
+                if (product.getCategory() != null) {
+                    productsInfo.append(" [").append(product.getCategory()).append("]");
+                }
+                
+                productsInfo.append("\n");
+            }
+            
+            if (config.getProducts().size() > maxProducts) {
+                productsInfo.append("... y ").append(config.getProducts().size() - maxProducts)
+                           .append(" productos más\n");
+            }
+            
+            // Subir información al agente
+            AgentCore.INSTANCE.uploadInterfaceInfo(productsInfo.toString());
+            Log.i(TAG, "Información de " + maxProducts + "/" + config.getProducts().size() 
+                     + " productos subida al agente");
+            
         } catch (Exception e) {
-            Log.e(TAG, "Error inicializando AgentOS: " + e.getMessage(), e);
+            Log.e(TAG, "Error subiendo productos al agente", e);
         }
     }
 

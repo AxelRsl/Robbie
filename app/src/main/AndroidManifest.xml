@@ -64,9 +64,11 @@
         -->
 
         <!-- EveActivity - Motor React Native (actividad principal con módulos nativos) -->
+        <!-- Removido android:process=":sandbox" para que AppAgent, PageAgent y AgentClientService
+             esten en el mismo proceso (patron ROBBI-GNC). Esto permite que las Actions se
+             despachen correctamente al PageAgent sin timeout. -->
         <activity
             android:name="com.robbie.platform.react.EveActivity"
-            android:process=":sandbox"
             android:launchMode="singleInstance"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true">

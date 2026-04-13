@@ -66,26 +66,63 @@ En Android Studio:
 
 ```
 robbie/
-├── app/
-│   ├── src/main/java/com/ainirobot/
-│   │   ├── moduleapp/lidd/          # Application class
-│   │   ├── platform/
-│   │   │   ├── react/               # React Native integration
-│   │   │   │   └── EveActivity.java # Main activity
-│   │   │   └── retail/              # Retail features
-│   │   │       ├── Product.java
-│   │   │       ├── ProductAdapter.java
-│   │   │       ├── RecommendationEngine.java
-│   │   │       ├── RobbieConfig.java
-│   │   │       └── AsyncTaskHelper.java
-│   │   └── ...
-│   └── build.gradle                 # App dependencies
-├── .env.example                     # Template (commitear)
-├── gradle.properties                # Credenciales (NO commitear)
+├── app/                             # Aplicación Android nativa
+│   ├── src/main/java/com/robbie/
+│   │   ├── base/                    # Configuración base
+│   │   │   └── config/
+│   │   │       ├── RemoteConfigManager.java      # Gestión de config OrionStar
+│   │   │       └── RobbieConfigApiClient.java    # Cliente API de configuración
+│   │   ├── moduleapp/lidd/
+│   │   │   └── RobotApp.java        # Application class principal
+│   │   └── platform/
+│   │       ├── react/               # Integración React Native
+│   │       │   ├── EveActivity.java             # Activity principal RN
+│   │       │   ├── PlatformReactNativeHost.java # Host RN
+│   │       │   └── modules/                     # Módulos nativos
+│   │       │       ├── ProductsModule.java      # Productos desde API
+│   │       │       ├── RobbieConfigModule.java  # Configuración dinámica
+│   │       │       ├── RobotSkillModule.java    # Habilidades del robot
+│   │       │       ├── AgentModule.java         # Agent SDK
+│   │       │       └── ...                      # Otros módulos
+│   │       └── retail/              # Funcionalidades retail
+│   │           ├── RobbieRetailActivity.java    # Activity retail con agente
+│   │           ├── RobbieConfig.java            # Modelo de configuración
+│   │           ├── Product.java                 # Modelo de producto
+│   │           ├── ProductAdapter.java          # Adaptador de productos
+│   │           ├── RecommendationEngine.java    # Motor de recomendaciones AI
+│   │           └── AsyncTaskHelper.java         # Utilidades async
+│   ├── src/main/res/                # Recursos Android
+│   └── build.gradle                 # Dependencias de la app
+│
+├── react-native-app/                # Aplicación React Native (UI)
+│   ├── src/
+│   │   ├── components/              # Componentes reutilizables
+│   │   │   ├── ProductCard.tsx      # Tarjeta de producto
+│   │   │   └── SearchBar.tsx        # Barra de búsqueda
+│   │   ├── screens/                 # Pantallas principales
+│   │   │   ├── MenuScreen.tsx       # Menú principal (8 opciones)
+│   │   │   ├── RetailScreen.tsx     # Catálogo de productos
+│   │   │   ├── PromoScreen.tsx      # Promociones
+│   │   │   └── ConfigScreen.tsx     # Configuración
+│   │   ├── services/                # Servicios
+│   │   │   └── CloudApi.ts          # Cliente API
+│   │   ├── stores/                  # Estado global
+│   │   └── types/                   # Tipos TypeScript
+│   ├── package.json                 # Dependencias RN
+│   └── tsconfig.json                # Config TypeScript
+│
+├── gradle/                          # Gradle wrapper
+├── .env.example                     # Template de variables de entorno
+├── gradle.properties                # Credenciales y config (NO commitear)
 ├── .gitignore                       # Incluye gradle.properties
+├── build-sign-app.ps1               # Script de compilación Windows
+├── build-sign-app.sh                # Script de compilación Linux/Mac
 ├── setup-env.bat                    # Setup Windows
 ├── setup-env.sh                     # Setup Linux/Mac
-├── BUILD_SIGN_README.md             # Guia de compilacion y firma
+├── BUILD_SIGN_README.md             # Guía de compilación y firma
+├── CONFIGURACION_API.md             # Documentación API de configuración
+├── CONFIGURACION_DINAMICA.md        # Documentación configuración dinámica
+├── EJEMPLO_CONFIG_API.json          # Ejemplo de respuesta API
 └── README.md                        # Este archivo
 ```
 

@@ -16,6 +16,9 @@ android {
         // Credentials loaded from gradle.properties
         buildConfigField "String", "AI_API_BASE_URL", "\"${project.findProperty('AI_API_BASE_URL') ?: ''}\""
         buildConfigField "String", "AI_API_KEY", "\"${project.findProperty('AI_API_KEY') ?: ''}\""
+        
+        // Robbie Config API
+        buildConfigField "String", "ROBBIE_CONFIG_API_URL", "\"${project.findProperty('ROBBIE_CONFIG_API_URL') ?: 'http://localhost:3000'}\""
     }
 
     buildFeatures {

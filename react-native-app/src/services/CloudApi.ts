@@ -1,7 +1,7 @@
 import { NativeModules } from 'react-native';
 import type { Product, Promotion, PromoVideo } from '@/types';
 
-const { CloudApiModule, ProductsModule } = NativeModules;
+const { CloudApiModule, ProductsModule, RobbieConfig } = NativeModules;
 
 class CloudApiService {
   private connected = false;
@@ -21,9 +21,16 @@ class CloudApiService {
   }
 
   async getProducts(category?: string): Promise<Product[]> {
+    console.log('[CloudApi] getProducts llamado, category:', category || 'todas');
     try {
       const json = await ProductsModule.getProducts(category || '');
-      return JSON.parse(json);
+      console.log('[CloudApi] Respuesta raw de ProductsModule:', json?.substring(0, 200));
+      const products = JSON.parse(json);
+      console.log('[CloudApi] Productos parseados:', products.length, 'items');
+      if (products.length > 0) {
+        console.log('[CloudApi] Primer producto:', products[0].name);
+      }
+      return products;
     } catch (error) {
       console.error('[CloudApi] Error obteniendo productos:', error);
       return [];
@@ -31,13 +38,30 @@ class CloudApiService {
   }
 
   async searchProducts(query: string): Promise<Product[]> {
+    console.log('[CloudApi] searchProducts llamado, query:', query);
     try {
       const json = await ProductsModule.searchProducts(query);
+      console.log('[CloudApi] Respuesta de busqueda:', json?.substring(0, 200));
       const result = JSON.parse(json);
+      console.log('[CloudApi] Resultados encontrados:', result.products?.length || 0);
       return result.products || [];
     } catch (error) {
       console.error('[CloudApi] Error buscando productos:', error);
       return [];
+    }
+  }
+
+  async getConfig(): Promise<any> {
+    console.log('[CloudApi] getConfig llamado');
+    try {
+      const json = await RobbieConfig.getConfig();
+      console.log('[CloudApi] Configuración recibida:', json?.substring(0, 200));
+      const config = JSON.parse(json);
+      console.log('[CloudApi] Config parseada - validScreens:', config.validScreens);
+      return config;
+    } catch (error) {
+      console.error('[CloudApi] Error obteniendo configuración:', error);
+      return { validScreens: [] };
     }
   }
 

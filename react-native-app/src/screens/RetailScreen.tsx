@@ -27,26 +27,33 @@ export const RetailScreen: React.FC = () => {
   }, []);
 
   const loadProducts = async () => {
+    console.log('[RetailScreen] Iniciando carga de productos...');
     setLoading(true);
     try {
       const data = await CloudApi.getProducts();
+      console.log('[RetailScreen] Productos cargados:', data.length, 'items');
+      if (data.length > 0) {
+        console.log('[RetailScreen] Primeros 3 productos:', data.slice(0, 3).map(p => p.name));
+      }
       setProducts(data);
     } catch (error) {
-      console.error('Error loading products:', error);
+      console.error('[RetailScreen] Error loading products:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSearch = async (query: string) => {
+    console.log('[RetailScreen] Buscando productos con query:', query);
     setIsSearching(true);
     try {
       const results = await CloudApi.searchProducts(query);
+      console.log('[RetailScreen] Resultados de busqueda:', results.length);
       setSearchResults(results);
       
       await RobotBridge.say(`Encontré ${results.length} productos relacionados con ${query}`);
     } catch (error) {
-      console.error('Error searching:', error);
+      console.error('[RetailScreen] Error searching:', error);
     } finally {
       setIsSearching(false);
     }
@@ -130,7 +137,7 @@ export const RetailScreen: React.FC = () => {
       <FlatList
         data={displayProducts}
         keyExtractor={(item) => item.id}
-        numColumns={retailTemplate === 'grid' ? 2 : 1}
+        numColumns={retailTemplate === 'grid' ? 4 : 1}
         key={retailTemplate}
         renderItem={({ item }) => (
           <ProductCard 
@@ -155,30 +162,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
   backButton: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#00695C',
     fontWeight: '600',
   },
   title: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#212121',
   },
   templateButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     backgroundColor: '#00695C',
-    borderRadius: 20,
+    borderRadius: 16,
   },
   templateButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
   },
   centerContainer: {
@@ -188,40 +196,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+    marginTop: 8,
+    fontSize: 14,
     color: '#757575',
   },
   searchingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
+    padding: 8,
     backgroundColor: '#E8F5E9',
   },
   searchingText: {
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: 6,
+    fontSize: 12,
     color: '#00695C',
   },
   resultsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    padding: 8,
     backgroundColor: '#E3F2FD',
   },
   resultsText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#1976D2',
     fontWeight: '600',
   },
   clearButton: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#1976D2',
     textDecorationLine: 'underline',
   },
   listContent: {
-    paddingBottom: 16,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
   },
 });
