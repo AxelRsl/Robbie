@@ -15,6 +15,9 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.robbie.data.local.RobbieDatabase;
+import com.robbie.data.local.entity.ProductEntity;
+
 /**
  * Modulo nativo que gestiona productos.
  *
@@ -141,8 +144,8 @@ public class ProductsModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * Obtiene productos de la API de configuracion Robbie.
-     * Si falla, usa datos mock como fallback.
+     * Obtiene productos de la base de datos local.
+     * Prioridad: 1) Cache, 2) DB Local, 3) API remota, 4) Mock
      */
     private JSONArray fetchProductsFromCloud() {
         if (cachedProducts != null) {
@@ -150,6 +153,47 @@ public class ProductsModule extends ReactContextBaseJavaModule {
             return cachedProducts;
         }
 
+        // PRIMERO: Intentar base de datos local
+        try {
+            Log.i(TAG, "[DB LOCAL] Consultando base de datos local...");
+            RobbieDatabase db = RobbieDatabase.getInstance(getReactApplicationContext());
+            List<ProductEntity> localProducts = db.productDao().getAllProductsBlocking();
+            
+            if (localProducts != null && !localProducts.isEmpty()) {
+                Log.i(TAG, "[DB LOCAL] Encontrados " + localProducts.size() + " productos en DB local");
+                JSONArray array = new JSONArray();
+                for (ProductEntity p : localProducts) {
+                    JSONObject product = new JSONObject();
+                    product.put("id", p.getId());
+                    product.put("name", p.getName());
+                    product.put("description", p.getDescription());
+                    product.put("price", p.getPrice());
+                    product.put("currency", "MXN");
+                    product.put("imageUrl", p.getImage());
+                    product.put("category", p.getCategory());
+                    product.put("subcategory", p.getSubcategory());
+                    product.put("brand", p.getBrand());
+                    product.put("sku", p.getSku());
+                    product.put("stock", p.getInStock() ? 1 : 0);
+                    product.put("discount", p.getDiscount());
+                    JSONArray tagsArray = new JSONArray();
+                    for (String tag : p.getTags()) {
+                        tagsArray.put(tag);
+                    }
+                    product.put("tags", tagsArray);
+                    array.put(product);
+                }
+                cachedProducts = array;
+                Log.i(TAG, "[DB LOCAL] Retornando " + array.length() + " productos de DB local");
+                return cachedProducts;
+            } else {
+                Log.w(TAG, "[DB LOCAL] No hay productos en la base de datos local");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "[DB LOCAL] Error consultando DB local", e);
+        }
+
+        // SEGUNDO: Intentar API remota
         Log.i(TAG, "[API] Consultando API de configuracion Robbie para productos...");
         
         final JSONArray[] result = new JSONArray[1];
@@ -163,7 +207,6 @@ public class ProductsModule extends ReactContextBaseJavaModule {
                     JSONArray array = new JSONArray();
                     for (JSONObject product : products) {
                         array.put(product);
-                        Log.d(TAG, "[API] Producto: " + product.optString("name", "sin nombre"));
                     }
                     result[0] = array;
                     cachedProducts = array;
@@ -198,7 +241,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
             return result[0];
         }
         
-        // Fallback: datos mock para demo/desarrollo
+        // TERCERO: Fallback a datos mock
         Log.w(TAG, "[FALLBACK] API no respondio o fallo, usando datos mock");
         try {
             cachedProducts = getMockProductsArray();

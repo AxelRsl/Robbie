@@ -18,7 +18,7 @@ interface MenuItem {
   screen: string;
 }
 
-// Definición completa de todas las pantallas disponibles
+// Menú principal con solo 3 opciones
 const allMenuItems: MenuItem[] = [
   {
     id: 'retail',
@@ -43,46 +43,6 @@ const allMenuItems: MenuItem[] = [
     icon: '🔍',
     color: '#9C27B0',
     screen: 'Search',
-  },
-  {
-    id: 'favorites',
-    title: 'Favoritos',
-    description: 'Productos guardados',
-    icon: '⭐',
-    color: '#F57C00',
-    screen: 'Favorites',
-  },
-  {
-    id: 'cart',
-    title: 'Carrito',
-    description: 'Ver carrito',
-    icon: '🛒',
-    color: '#0288D1',
-    screen: 'Cart',
-  },
-  {
-    id: 'orders',
-    title: 'Pedidos',
-    description: 'Historial',
-    icon: '📦',
-    color: '#5E35B1',
-    screen: 'Orders',
-  },
-  {
-    id: 'help',
-    title: 'Ayuda',
-    description: 'Asistencia',
-    icon: '❓',
-    color: '#00897B',
-    screen: 'Help',
-  },
-  {
-    id: 'config',
-    title: 'Configuración',
-    description: 'Ajustes',
-    icon: '\u2699\uFE0F',
-    color: '#1976D2',
-    screen: 'Config',
   },
 ];
 

@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'kotlin-kapt'
 
 android {
     namespace 'com.robbie'
@@ -89,4 +90,12 @@ dependencies {
     // Otras utilidades
     implementation 'com.alibaba:fastjson:2.0.39'
     implementation 'com.google.guava:guava:31.1-android'
+
+    // Room Database (SQLite local)
+    implementation 'androidx.room:room-runtime:2.6.1'
+    implementation 'androidx.room:room-ktx:2.6.1'
+    kapt 'androidx.room:room-compiler:2.6.1'
+
+    // NanoHTTPD - Servidor HTTP embebido ligero
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
 }

@@ -1,11 +1,14 @@
 package com.robbie.moduleapp.lidd;
 
 import android.app.Application;
+import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 
 import com.robbie.BuildConfig;
 import com.robbie.base.config.RemoteConfigManager;
+import com.robbie.data.server.RobbieApiService;
 import com.robbie.platform.react.PlatformReactNativeHost;
 import com.robbie.platform.retail.RobbieConfig;
 import com.robbie.platform.retail.Product;
@@ -48,7 +51,10 @@ public class RobotApp extends Application implements ReactApplication {
         // 1. Configuracion remota (siempre primero)
         initializeRemoteConfig();
 
-        // 2. Inicializar Agent SDK (AgentOS) con persona configurable
+        // 2. Iniciar servidor API local para administración remota
+        startApiServer();
+
+        // 3. Inicializar Agent SDK (AgentOS) con persona configurable
         initializeAgentOS();
 
         Log.i(TAG, "robbie inicializado correctamente");
@@ -58,6 +64,20 @@ public class RobotApp extends Application implements ReactApplication {
         RemoteConfigManager configManager = RemoteConfigManager.getInstance(this);
         configManager.logCurrentConfig();
         Log.i(TAG, "Region activa: " + configManager.getActiveRegion());
+    }
+
+    private void startApiServer() {
+        try {
+            Intent serviceIntent = new Intent(this, RobbieApiService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+            Log.i(TAG, "API Server iniciado - URL: " + RobbieApiService.getServerUrl(this));
+        } catch (Exception e) {
+            Log.e(TAG, "Error iniciando API Server", e);
+        }
     }
 
     private void initializeAgentOS() {

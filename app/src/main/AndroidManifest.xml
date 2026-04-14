@@ -24,6 +24,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.BROADCAST_STICKY" />
@@ -109,6 +110,13 @@
                 <action android:name="com.ainirobot.call.MQTT_SERVICE" />
             </intent-filter>
         </service>
+
+        <!-- Servicio API REST local para administración remota -->
+        <service
+            android:name="com.robbie.data.server.RobbieApiService"
+            android:exported="false"
+            android:enabled="true"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 </manifest>

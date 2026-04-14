@@ -25,6 +25,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.robbie.data.local.RobbieDatabase;
+import com.robbie.data.local.entity.ProductEntity;
+
 /**
  * RobbieRetailActivity - Activity base para retail con AgentOS SDK.
  * 
@@ -273,26 +276,40 @@ public class RobbieRetailActivity extends EveActivity {
     /**
      * Sube informacion del catalogo de productos al Agent para contexto.
      * Esto ayuda al LLM a entender que productos estan disponibles.
+     * Ahora carga productos desde la base de datos local.
      */
     private void uploadCatalogInfoToAgent() {
-        if (robbieConfig == null || robbieConfig.getProducts().isEmpty()) {
-            Log.w(TAG, "No hay productos para subir al Agent");
-            return;
-        }
-        
-        List<Product> products = robbieConfig.getProducts();
-        StringBuilder info = new StringBuilder("Catalogo GNC - " + products.size() + " productos:\n");
-        
-        int max = Math.min(products.size(), 20);
-        for (int i = 0; i < max; i++) {
-            Product p = products.get(i);
-            info.append("- ").append(p.getName())
-                .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
-                .append(" [").append(p.getCategory()).append("]\n");
-        }
-        
-        AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
-        Log.d(TAG, "Catalogo subido al Agent: " + max + " productos");
+        // Cargar productos desde la base de datos local en un hilo de fondo
+        new Thread(() -> {
+            try {
+                RobbieDatabase db = RobbieDatabase.getInstance(this);
+                List<ProductEntity> products = db.productDao().getAllProductsBlocking();
+                
+                if (products == null || products.isEmpty()) {
+                    Log.w(TAG, "No hay productos en la base de datos local");
+                    return;
+                }
+                
+                StringBuilder info = new StringBuilder("Catalogo GNC - " + products.size() + " productos:\n");
+                
+                int max = Math.min(products.size(), 20);
+                for (int i = 0; i < max; i++) {
+                    ProductEntity p = products.get(i);
+                    info.append("- ").append(p.getName())
+                        .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
+                        .append(" [").append(p.getCategory()).append("]\n");
+                }
+                
+                if (products.size() > max) {
+                    info.append("... y ").append(products.size() - max).append(" productos mas\n");
+                }
+                
+                AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
+                Log.i(TAG, "Catalogo subido al Agent: " + products.size() + " productos desde DB local");
+            } catch (Exception e) {
+                Log.e(TAG, "Error cargando productos desde DB local", e);
+            }
+        }).start();
     }
 
     /**
