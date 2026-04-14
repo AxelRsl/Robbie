@@ -65,7 +65,6 @@ public class EveActivity extends ReactActivity {
 
     private PageAgent pageAgent;
     private RecommendationEngine recommendationEngine;
-    private final List<Product> allProducts = new ArrayList<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private RobotApi robotApi;
     private int faceTrackReqId = 1001;
@@ -88,16 +87,7 @@ public class EveActivity extends ReactActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        RobotApp app = (RobotApp) getApplication();
-        RobbieConfig config = app.getRobbieConfig();
-        
         recommendationEngine = new RecommendationEngine();
-        
-        if (config != null) {
-            allProducts.addAll(config.getProducts());
-            Log.d(TAG, "Loaded " + allProducts.size() + " products from config");
-        }
-        
         initializePageAgent();
     }
 
@@ -105,21 +95,11 @@ public class EveActivity extends ReactActivity {
     protected void onStart() {
         super.onStart();
         
-        // Refrescar productos desde config (puede haber cargado desde la API
-        // despues de onCreate, cuando allProducts estaba vacio)
-        RobotApp app = (RobotApp) getApplication();
-        RobbieConfig config = app.getRobbieConfig();
-        if (config != null && config.getProducts() != null && !config.getProducts().isEmpty()
-                && allProducts.isEmpty()) {
-            allProducts.addAll(config.getProducts());
-            Log.i(TAG, "Products refreshed in onStart: " + allProducts.size());
-        }
-        
         uploadCatalogInfoToAgent();
         
         AgentCore.INSTANCE.enableWakeupMode(true);
         AgentCore.INSTANCE.setEnableWakeFree(true);
-        Log.d(TAG, "Wake mode: hardware=ON, wake-free=ON");
+        Log.d(TAG, "Wake mode: hardware=ON, wake-free=ON (no wake word filter)");
         
         setLightSolidColor(0xFF0000);
         
@@ -127,7 +107,7 @@ public class EveActivity extends ReactActivity {
         
         AsyncTaskHelper.executeDelayed(() -> {
             AgentCore.INSTANCE.tts(
-                "Hola, soy Robbie. Di 'Robbie' para hablar conmigo. Puedo ayudarte a encontrar productos o recomendarte lo que necesites.",
+                "Hola, soy Robbie. Puedo ayudarte a encontrar productos o recomendarte lo que necesites.",
                 20000, null);
         }, 500);
     }
@@ -187,30 +167,11 @@ public class EveActivity extends ReactActivity {
                     
                     Log.d(TAG, "ASR final: " + text);
                     
-                    String lower = text.toLowerCase();
-                    boolean hasWakeWord = lower.contains("robbie") || lower.contains("robi") ||
-                        lower.contains("rubi") || lower.contains("robin") ||
-                        lower.contains("robe") || lower.contains("robby");
-                    
-                    // Si no tiene wake word pero el texto no esta vacio, enviar directamente
-                    // al query (el hardware wake word ya filtro la activacion del mic)
-                    if (!hasWakeWord && !text.isEmpty()) {
-                        Log.d(TAG, "No wake word, sending directly to query: " + text);
+                    // Enviar cualquier texto directamente al query (sin wake word)
+                    if (!text.isEmpty()) {
+                        Log.d(TAG, "Sending to query: " + text);
                         AgentCore.INSTANCE.query(text);
                         emitTranscriptionEvent(text, true, true);
-                        return true;
-                    }
-                    
-                    if (hasWakeWord) {
-                        String command = text.replaceAll("(?i)robbie|robi|rubi|robin|robe|robby", "").trim();
-                        if (command.isEmpty()) {
-                            AgentCore.INSTANCE.tts("¿Sí? ¿En qué te puedo ayudar?", 10000, null);
-                        } else {
-                            Log.d(TAG, "Wake word detected → query: " + command);
-                            AgentCore.INSTANCE.query(command);
-                        }
-                        emitTranscriptionEvent(text, true, true);
-                        return true;
                     }
                     
                     return true;
@@ -222,6 +183,7 @@ public class EveActivity extends ReactActivity {
                         Log.d(TAG, "TTS final: " + transcription.getText());
                         mainHandler.removeCallbacks(restoreDefaultLight);
                         mainHandler.postDelayed(restoreDefaultLight, 1000);
+                        AgentCore.INSTANCE.setEnableWakeFree(true);
                     }
                     emitTranscriptionEvent(transcription.getText(), false, transcription.getFinal());
                     return false;
@@ -362,7 +324,8 @@ public class EveActivity extends ReactActivity {
 
                             Log.d(TAG, "Action DETAIL: name=" + name);
                             mainHandler.post(() -> {
-                                for (Product p : allProducts) {
+                                List<Product> products = getProducts();
+                                for (Product p : products) {
                                     if (p.getName().toLowerCase().contains(name)) {
                                         speakProductInfo(p);
                                         break;
@@ -566,11 +529,12 @@ public class EveActivity extends ReactActivity {
     }
 
     private void uploadCatalogInfoToAgent() {
-        if (allProducts.isEmpty()) return;
-        StringBuilder info = new StringBuilder("Catalogo - " + allProducts.size() + " productos:\n");
-        int max = Math.min(allProducts.size(), 20);
+        List<Product> products = getProducts();
+        if (products.isEmpty()) return;
+        StringBuilder info = new StringBuilder("Catalogo - " + products.size() + " productos:\n");
+        int max = Math.min(products.size(), 20);
         for (int i = 0; i < max; i++) {
-            Product p = allProducts.get(i);
+            Product p = products.get(i);
             info.append("- ").append(p.getName())
                 .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
                 .append(" [").append(p.getCategory()).append("]\n");
@@ -584,8 +548,15 @@ public class EveActivity extends ReactActivity {
             return;
         }
         
+        List<Product> products = getProducts();
+        if (products.isEmpty()) {
+            Log.w(TAG, "No products available for recommendation");
+            AgentCore.INSTANCE.tts("Aún no tengo productos cargados, intenta de nuevo en un momento", 10000, null);
+            return;
+        }
+        
         Log.d(TAG, "AI recommendation: need=" + userNeed + " restriction=" + restriction);
-        recommendationEngine.recommend(allProducts, userNeed, restriction,
+        recommendationEngine.recommend(products, userNeed, restriction,
                 new RecommendationEngine.RecommendationCallback() {
                     @Override
                     public void onResult(String explanation, List<String> ids) {
@@ -599,7 +570,8 @@ public class EveActivity extends ReactActivity {
     }
 
     private void showRecommendation(String explanation, List<String> productIds) {
-        for (Product p : allProducts) {
+        List<Product> products = getProducts();
+        for (Product p : products) {
             if (productIds.contains(p.getId())) {
                 p.setAiRecommended(true);
             }
@@ -615,9 +587,17 @@ public class EveActivity extends ReactActivity {
 
     private void searchProducts(String query) {
         if (query == null || query.isEmpty()) return;
+        
+        List<Product> products = getProducts();
+        if (products.isEmpty()) {
+            Log.w(TAG, "No products available for search");
+            AgentCore.INSTANCE.tts("Aún no tengo productos cargados, intenta de nuevo en un momento", 10000, null);
+            return;
+        }
+        
         String q = query.toLowerCase();
         List<String> foundIds = new ArrayList<>();
-        for (Product p : allProducts) {
+        for (Product p : products) {
             if (p.getName().toLowerCase().contains(q) ||
                 p.getCategory().toLowerCase().contains(q) ||
                 p.getBrand().toLowerCase().contains(q)) {
@@ -718,6 +698,19 @@ public class EveActivity extends ReactActivity {
         } catch (Exception e) {
             Log.w(TAG, "Could not emit product detail event", e);
         }
+    }
+
+    private List<Product> getProducts() {
+        try {
+            RobotApp app = (RobotApp) getApplication();
+            RobbieConfig config = app.getRobbieConfig();
+            if (config != null && config.getProducts() != null) {
+                return config.getProducts();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error getting products from config", e);
+        }
+        return new ArrayList<>();
     }
 
     public static void launch(Activity fromActivity) {

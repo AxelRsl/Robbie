@@ -71,7 +71,7 @@ public class RobotApp extends Application implements ReactApplication {
         createAppAgent(robbieConfig);
 
         // Cargar config real desde API (async) y actualizar productos
-        String configApiUrl = BuildConfig.ROBBIE_CONFIG_API_URL;
+        String configApiUrl = BuildConfig.ROBBIE_CONFIG_API_URL + "/robbie/config";
         Log.i(TAG, "Usando API URL desde BuildConfig: " + configApiUrl);
 
         RobbieConfig.loadFromApi(configApiUrl, new RobbieConfig.ConfigCallback() {

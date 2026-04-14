@@ -45,8 +45,22 @@ cp .env.example gradle.properties
 Abrir `gradle.properties` y reemplazar con tus credenciales de Azure OpenAI:
 
 ```properties
-AI_API_BASE_URL=https://tu-endpoint.openai.azure.com/openai/deployments/tu-deployment/chat/completions?api-version=2025-01-01-preview
-AI_API_KEY=tu-api-key-aqui
+android.suppressUnsupportedCompileSdk=34
+android.useAndroidX=true
+android.enableJetifier=true
+android.nonTransitiveRClass=false
+android.defaults.buildfeatures.buildconfig=true
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true
+
+# Azure OpenAI Configuration
+# IMPORTANTE: No commitear este archivo con credenciales reales
+AI_API_BASE_URL=tu-base-url-aqui
+AI_API_KEY=tu-key-aqui
+
+ROBBIE_CONFIG_API_URL=192.168.0.x:3000
+
 ```
 
 ### 4. Gradle Sync
@@ -128,18 +142,6 @@ robbie/
 
 ---
 
-## Configuracion
-
-### Variables de Entorno
-
-Las credenciales de Azure OpenAI se configuran en `gradle.properties`:
-
-```properties
-# Azure OpenAI Configuration
-AI_API_BASE_URL=https://...
-AI_API_KEY=...
-```
-
 ### API REST de Configuracion
 
 Opcionalmente, puedes usar la API REST para configurar persona, objetivo y productos:
@@ -172,6 +174,7 @@ El robot detecta las siguientes variantes:
 - Robin
 - Robe
 - Robby
+- Lobi
 
 ### Face Tracking
 
@@ -179,11 +182,6 @@ El robot automaticamente:
 1. Detecta personas en su campo de vision
 2. Sigue con la cabeza a la persona mas cercana
 3. Reconecta si pierde el tracking
-
-### Luces LED
-
-- 🔴 **Rojo solido**: Estado por defecto
-- 🔵 **Azul pulsante**: Usuario hablando
 
 ---
 
@@ -249,16 +247,6 @@ RecommendationEngine → Azure OpenAI → Productos recomendados
 TTS explica → Eventos a React Native → UI actualizada
 ```
 
-### Actions Disponibles
-
-- **SAY**: Respuesta de voz generica
-- **SHOW_HAPPY**: Respuesta alegre
-- **SHOW_SAD**: Respuesta empatica
-- **SHOW_ANGRY**: Respuesta calmada
-- **RECOMMEND_PRODUCTS**: Recomienda productos
-- **SEARCH_PRODUCTS**: Busca productos
-- **SHOW_PRODUCT_DETAIL**: Detalle de producto
-
 ---
 
 ## Seguridad
@@ -311,13 +299,46 @@ gradle.properties
 
 ## Deployment
 
-### APK Release
+### Build y Firma con Scripts Automatizados
 
-```bash
-./gradlew assembleRelease
+#### Windows (PowerShell)
+
+El script `build-sign-app.ps1` automatiza todo el proceso de compilacion, alineamiento y firma del APK:
+
+```powershell
+.\build-sign-app.ps1
 ```
 
-APK generado en: `app/build/outputs/apk/release/app-release.apk`
+Opcionalmente, especifica la ruta del keystore:
+```powershell
+.\build-sign-app.ps1 -KeystoreFile "ruta\a\tu\keystore.jks"
+```
+
+**El script realiza los siguientes pasos:**
+1. Limpia el proyecto (`gradlew clean`)
+2. Compila el bundle de React Native (si existe `react-native-app/package.json`)
+3. Compila el APK release sin firmar
+4. Alinea el APK con `zipalign`
+5. Firma el APK con `apksigner`
+6. Verifica la firma del APK
+
+**Requisitos:**
+- Keystore file (por defecto busca `release.keystore` en la raiz del proyecto)
+- Android SDK instalado con build-tools
+- Si no tienes keystore, crea uno con:
+  ```powershell
+  keytool -genkey -v -keystore release.keystore -alias release -keyalg RSA -keysize 2048 -validity 10000
+  ```
+
+**APK final generado en:** `app/build/outputs/apk/release/robbie-release-signed.apk`
+
+#### Linux/Mac
+
+Para sistemas Unix, usa el script equivalente:
+```bash
+chmod +x build-sign-app.sh
+./build-sign-app.sh
+```
 
 ### CI/CD
 
