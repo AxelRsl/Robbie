@@ -1,15 +1,44 @@
 # Robbie Local API
 
-API REST embebida en el robot para administración remota desde el panel web.
+API REST embebida en el robot para administración remota desde el panel web LIDDAI.
+
+> **IMPORTANTE:** Este sistema NO usa Firebase/Firestore. Todos los datos se almacenan localmente en el robot usando SQLite (Room) y se sincronizan vía HTTP REST.
 
 ## Arquitectura
 
 ```
-┌─────────────────┐         HTTP REST          ┌─────────────────┐
-│   LIDDAI Panel  │ ◄─────────────────────────► │  Robot (Android) │
-│   (Next.js)     │    http://robot-ip:8080    │  + SQLite/Room   │
-└─────────────────┘                             └─────────────────┘
+┌─────────────────────┐       HTTP REST        ┌─────────────────────────┐
+│    LIDDAI Panel     │ ◄────────────────────► │     Robot (Android)     │
+│    (Next.js Web)    │   http://robot:8080    │                         │
+│                     │                         │  ┌─────────────────┐   │
+│  - Robot Maps       │  GET /api/robot-maps   │  │ /sdcard/robot/  │   │
+│  - Persona Config   │  GET/PUT /api/persona  │  │   map/*.jpeg    │   │
+│  - Products         │  CRUD /api/products    │  └─────────────────┘   │
+│  - Tour Stops       │  CRUD /api/tour-stops  │                         │
+│                     │                         │  ┌─────────────────┐   │
+│                     │                         │  │  SQLite (Room)  │   │
+│                     │                         │  │  - products     │   │
+│                     │                         │  │  - config       │   │
+│                     │                         │  │  - maps         │   │
+│                     │                         │  │  - tour_stops   │   │
+│                     │                         │  └─────────────────┘   │
+└─────────────────────┘                         └─────────────────────────┘
 ```
+
+## ¿Cómo funciona?
+
+### Flujo de datos
+
+1. **El panel web se conecta al robot** usando la IP del robot (ej: `http://192.168.1.215:8080`)
+2. **El robot tiene un servidor HTTP embebido** (NanoHTTPD) que expone endpoints REST
+3. **Los datos se guardan en SQLite** dentro del robot (no en la nube)
+4. **Los mapas del sistema OrionStar** se leen directamente del filesystem (`/sdcard/robot/map/`)
+
+### Ventajas de este enfoque
+- ✅ **Sin dependencia de internet** - Funciona en redes locales sin conexión a internet
+- ✅ **Datos siempre en el robot** - No hay sincronización con servidores externos
+- ✅ **Baja latencia** - Comunicación directa robot ↔ panel
+- ✅ **Sin costos de Firebase** - No hay límites de lectura/escritura
 
 ## Configuración
 
@@ -18,10 +47,11 @@ El servidor se inicia automáticamente cuando arranca la aplicación del robot.
 - **Puerto por defecto:** 8080
 - **URL:** `http://<robot-ip>:8080`
 
-Para obtener la IP del robot, puedes:
+Para obtener la IP del robot:
 1. Ver en la notificación del servicio
 2. Revisar los logs: `adb logcat | grep RobbieApiService`
 3. Usar `adb shell ip addr show wlan0`
+4. En el panel LIDDAI, ir a Settings y configurar la IP
 
 ## Endpoints
 
@@ -188,20 +218,11 @@ DELETE /api/tour-stops/{id}
 
 ---
 
-### Config
+### Config (Configuración general)
 
 #### Obtener toda la configuración
 ```
 GET /api/config
-```
-
-Respuesta:
-```json
-{
-  "persona": "Tu nombre es Robbie...",
-  "storeName": "GNC",
-  "objective": "Ayudar a los clientes..."
-}
 ```
 
 #### Obtener valor específico
@@ -222,6 +243,85 @@ Content-Type: application/json
 #### Eliminar configuración
 ```
 DELETE /api/config/{key}
+```
+
+---
+
+### Robot Maps (Mapas del sistema OrionStar)
+
+Los mapas son creados por la app "Herramientas de Mapa" del robot y se almacenan en `/sdcard/robot/map/`.
+
+#### Listar mapas del robot
+```
+GET /api/robot-maps
+```
+
+Respuesta:
+```json
+{
+  "maps": [
+    {
+      "id": "LIDD-0318092859",
+      "name": "LIDD-0318092859",
+      "path": "/sdcard/robot/map/LIDD-0318092859",
+      "hasImage": true,
+      "imageUrl": "/api/robot-maps/LIDD-0318092859/image",
+      "hasZip": true,
+      "lastModified": 1774538712000
+    }
+  ],
+  "count": 3
+}
+```
+
+#### Obtener imagen del mapa
+```
+GET /api/robot-maps/{id}/image
+```
+
+Retorna la imagen JPEG del mapa directamente (Content-Type: image/jpeg).
+
+---
+
+### Persona (Personalidad del robot)
+
+La configuración de personalidad se guarda en SQLite y el robot la usa para su comportamiento.
+
+#### Obtener configuración de persona
+```
+GET /api/persona
+```
+
+Respuesta:
+```json
+{
+  "robotName": "Robbie",
+  "robotIdentity": "Un asistente amigable que ayuda a los clientes",
+  "enterpriseIntro": "Bienvenido a nuestra tienda",
+  "greeting": "¡Hola! Soy Robbie, ¿en qué puedo ayudarte?",
+  "farewell": "¡Gracias por visitarnos!",
+  "idleMessage": "¿Necesitas ayuda?",
+  "personality": "friendly",
+  "language": "es-MX",
+  "voiceId": "es-mx-x-efg-local",
+  "speakSpeed": 1.0,
+  "conversationStyles": ["natural", "friendly"],
+  "autoChatEnabled": true,
+  "autoChatInterval": 30
+}
+```
+
+#### Guardar configuración de persona
+```
+PUT /api/persona
+Content-Type: application/json
+
+{
+  "robotName": "Robbie",
+  "robotIdentity": "Soy un asistente de GNC...",
+  "greeting": "¡Hola! Bienvenido a GNC...",
+  ...
+}
 ```
 
 ---
@@ -277,22 +377,108 @@ await fetch(`${ROBOT_API}/api/products/prod-123`, {
 ```
 app/src/main/java/com/robbie/data/
 ├── local/
-│   ├── RobbieDatabase.kt          # Base de datos Room
+│   ├── RobbieDatabase.java        # Base de datos Room (SQLite)
 │   ├── converter/
-│   │   └── StringListConverter.kt # Convertidor para listas
+│   │   └── StringListConverter.java
 │   ├── dao/
-│   │   ├── ProductDao.kt
-│   │   ├── MapDao.kt
-│   │   ├── ConfigDao.kt
-│   │   └── TourStopDao.kt
+│   │   ├── ProductDao.java
+│   │   ├── MapDao.java
+│   │   ├── ConfigDao.java
+│   │   └── TourStopDao.java
 │   └── entity/
-│       ├── ProductEntity.kt
-│       ├── MapEntity.kt
-│       ├── ConfigEntity.kt
-│       └── TourStopEntity.kt
+│       ├── ProductEntity.java
+│       ├── MapEntity.java
+│       ├── ConfigEntity.java
+│       └── TourStopEntity.java
 ├── repository/
-│   └── ProductRepository.kt       # Repositorio con conversiones
+│   └── ProductRepository.java
 └── server/
-    ├── RobbieApiServer.kt         # Servidor HTTP (NanoHTTPD)
-    └── RobbieApiService.kt        # Servicio Android foreground
+    ├── RobbieApiServer.java       # Servidor HTTP (NanoHTTPD)
+    └── RobbieApiService.java      # Servicio Android foreground
+```
+
+---
+
+## Resumen de Endpoints
+
+| Recurso | Método | Endpoint | Descripción |
+|---------|--------|----------|-------------|
+| Health | GET | `/api/health` | Estado del servidor |
+| Products | GET | `/api/products` | Listar productos |
+| Products | GET | `/api/products/{id}` | Obtener producto |
+| Products | POST | `/api/products` | Crear producto |
+| Products | PUT | `/api/products/{id}` | Actualizar producto |
+| Products | DELETE | `/api/products/{id}` | Eliminar producto |
+| Robot Maps | GET | `/api/robot-maps` | Listar mapas del sistema |
+| Robot Maps | GET | `/api/robot-maps/{id}/image` | Imagen del mapa |
+| Persona | GET | `/api/persona` | Obtener personalidad |
+| Persona | PUT | `/api/persona` | Guardar personalidad |
+| Config | GET | `/api/config` | Toda la configuración |
+| Config | GET | `/api/config/{key}` | Valor específico |
+| Config | PUT | `/api/config/{key}` | Establecer valor |
+| Tour Stops | GET | `/api/tour-stops` | Listar paradas |
+| Tour Stops | POST | `/api/tour-stops` | Crear parada |
+
+---
+
+## Flujo completo: Panel Web ↔ Robot
+
+### 1. Mapas (Solo lectura)
+```
+Panel Web                          Robot
+    │                                │
+    │  GET /api/robot-maps           │
+    │ ──────────────────────────────►│
+    │                                │ Lee /sdcard/robot/map/
+    │◄────────────────────────────── │
+    │  { maps: [...], count: 3 }     │
+    │                                │
+    │  GET /api/robot-maps/X/image   │
+    │ ──────────────────────────────►│
+    │                                │ Lee /sdcard/robot/map/X.jpeg
+    │◄────────────────────────────── │
+    │  [imagen JPEG binaria]         │
+```
+
+### 2. Persona (Lectura/Escritura)
+```
+Panel Web                          Robot
+    │                                │
+    │  GET /api/persona              │
+    │ ──────────────────────────────►│
+    │                                │ SELECT * FROM config WHERE key='persona'
+    │◄────────────────────────────── │
+    │  { robotName: "Robbie", ... }  │
+    │                                │
+    │  PUT /api/persona              │
+    │  { robotName: "Liddai", ... }  │
+    │ ──────────────────────────────►│
+    │                                │ INSERT/UPDATE config SET value='{...}'
+    │◄────────────────────────────── │
+    │  { robotName: "Liddai", ... }  │
+```
+
+### 3. Productos (CRUD completo)
+```
+Panel Web                          Robot
+    │                                │
+    │  GET /api/products             │
+    │ ──────────────────────────────►│
+    │                                │ SELECT * FROM products
+    │◄────────────────────────────── │
+    │  [{ id, name, price, ... }]    │
+    │                                │
+    │  POST /api/products            │
+    │  { name: "Proteina", ... }     │
+    │ ──────────────────────────────►│
+    │                                │ INSERT INTO products VALUES(...)
+    │◄────────────────────────────── │
+    │  { id: "abc123", ... }         │
+    │                                │
+    │  PUT /api/products/abc123      │
+    │  { price: 1500 }               │
+    │ ──────────────────────────────►│
+    │                                │ UPDATE products SET price=1500 WHERE id='abc123'
+    │◄────────────────────────────── │
+    │  { id: "abc123", price: 1500 } │
 ```
