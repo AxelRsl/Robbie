@@ -12,6 +12,7 @@ import com.robbie.data.local.entity.MapEntity;
 import com.robbie.data.local.entity.ProductEntity;
 import com.robbie.data.local.entity.TourStopEntity;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -19,6 +20,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import android.os.Environment;
 
 import fi.iki.elonen.NanoHTTPD;
 
@@ -96,10 +99,14 @@ public class RobbieApiServer extends NanoHTTPD {
                 return handleProducts(method, partsList, session);
             case "maps":
                 return handleMaps(method, partsList, session);
+            case "robot-maps":
+                return handleRobotMaps(method, partsList);
             case "tour-stops":
                 return handleTourStops(method, partsList, session);
             case "config":
                 return handleConfig(method, partsList, session);
+            case "persona":
+                return handlePersona(method, session);
             case "health":
                 return handleHealth();
             default:
@@ -524,6 +531,156 @@ public class RobbieApiServer extends NanoHTTPD {
     private Response deleteConfig(String key) {
         getDatabase().configDao().deleteConfig(key);
         return jsonResponse(Response.Status.OK, mapOf("message", "Config deleted"));
+    }
+    
+    // ─────────────────────────────────────────────────────────────────────────
+    // ROBOT MAPS (from OrionStar system)
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    private Response handleRobotMaps(Method method, List<String> parts) {
+        if (method != Method.GET) {
+            return jsonResponse(Response.Status.METHOD_NOT_ALLOWED, mapOf("error", "Only GET allowed"));
+        }
+        
+        // Handle /api/robot-maps/{id}/image
+        if (parts.size() >= 4 && "image".equals(parts.get(3))) {
+            return getMapImage(parts.get(2));
+        }
+        
+        List<Map<String, Object>> robotMaps = new ArrayList<>();
+        
+        // OrionStar stores maps in /sdcard/robot/map/ directory (use only one path to avoid duplicates)
+        File mapDir = new File("/sdcard/robot/map");
+        
+        if (mapDir.exists() && mapDir.isDirectory()) {
+            File[] mapFolders = mapDir.listFiles();
+            if (mapFolders != null) {
+                for (File folder : mapFolders) {
+                    if (folder.isDirectory()) {
+                        Map<String, Object> mapInfo = new HashMap<>();
+                        mapInfo.put("id", folder.getName());
+                        mapInfo.put("name", folder.getName());
+                        mapInfo.put("path", folder.getAbsolutePath());
+                        
+                        // Check for map image (OrionStar saves as .jpeg next to folder)
+                        File mapImage = new File(mapDir, folder.getName() + ".jpeg");
+                        if (!mapImage.exists()) {
+                            mapImage = new File(mapDir, folder.getName() + ".jpg");
+                        }
+                        if (!mapImage.exists()) {
+                            mapImage = new File(folder, "map.png");
+                        }
+                        mapInfo.put("hasImage", mapImage.exists());
+                        mapInfo.put("imageUrl", mapImage.exists() ? "/api/robot-maps/" + folder.getName() + "/image" : null);
+                        
+                        // Check for map zip file
+                        File mapZip = new File(mapDir, folder.getName() + ".zip");
+                        mapInfo.put("hasZip", mapZip.exists());
+                        
+                        mapInfo.put("lastModified", folder.lastModified());
+                        
+                        robotMaps.add(mapInfo);
+                    }
+                }
+            }
+        }
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("maps", robotMaps);
+        result.put("count", robotMaps.size());
+        return jsonResponse(Response.Status.OK, result);
+    }
+    
+    private Response getMapImage(String mapId) {
+        File mapDir = new File("/sdcard/robot/map");
+        
+        // Try .jpeg first, then .jpg
+        File imageFile = new File(mapDir, mapId + ".jpeg");
+        if (!imageFile.exists()) {
+            imageFile = new File(mapDir, mapId + ".jpg");
+        }
+        if (!imageFile.exists()) {
+            imageFile = new File(new File(mapDir, mapId), "map.png");
+        }
+        
+        if (!imageFile.exists()) {
+            return jsonResponse(Response.Status.NOT_FOUND, mapOf("error", "Map image not found"));
+        }
+        
+        try {
+            java.io.FileInputStream fis = new java.io.FileInputStream(imageFile);
+            String mimeType = imageFile.getName().endsWith(".png") ? "image/png" : "image/jpeg";
+            return newFixedLengthResponse(Response.Status.OK, mimeType, fis, imageFile.length());
+        } catch (Exception e) {
+            Log.e(TAG, "Error reading map image", e);
+            return jsonResponse(Response.Status.INTERNAL_ERROR, mapOf("error", "Failed to read image"));
+        }
+    }
+    
+    // ─────────────────────────────────────────────────────────────────────────
+    // PERSONA
+    // ─────────────────────────────────────────────────────────────────────────
+    
+    private Response handlePersona(Method method, IHTTPSession session) {
+        switch (method) {
+            case GET:
+                return getPersona();
+            case PUT:
+            case POST:
+                return savePersona(session);
+            default:
+                return jsonResponse(Response.Status.METHOD_NOT_ALLOWED, mapOf("error", "Method not allowed"));
+        }
+    }
+    
+    private Response getPersona() {
+        ConfigEntity config = getDatabase().configDao().getConfig("persona");
+        if (config != null && config.getValue() != null && !config.getValue().isEmpty()) {
+            try {
+                Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
+                Map<String, Object> persona = gson.fromJson(config.getValue(), mapType);
+                return jsonResponse(Response.Status.OK, persona);
+            } catch (Exception e) {
+                Log.e(TAG, "Error parsing persona config", e);
+            }
+        }
+        
+        // Return default persona
+        Map<String, Object> defaultPersona = new HashMap<>();
+        defaultPersona.put("robotName", "Robbie");
+        defaultPersona.put("robotIdentity", "Un asistente amigable que ayuda a los clientes");
+        defaultPersona.put("enterpriseIntro", "");
+        defaultPersona.put("additionalInfo", "");
+        defaultPersona.put("greeting", "¡Hola! Soy Robbie, ¿en qué puedo ayudarte?");
+        defaultPersona.put("farewell", "¡Gracias por visitarnos! Que tengas un excelente día.");
+        defaultPersona.put("idleMessage", "¿Necesitas ayuda? Acércate y pregúntame lo que quieras.");
+        defaultPersona.put("personality", "friendly");
+        defaultPersona.put("language", "es-MX");
+        defaultPersona.put("voiceId", "es-mx-x-efg-local");
+        defaultPersona.put("speakSpeed", 1.0);
+        defaultPersona.put("conversationStyles", new String[]{"natural", "friendly"});
+        defaultPersona.put("autoChatEnabled", true);
+        defaultPersona.put("autoChatInterval", 30);
+        return jsonResponse(Response.Status.OK, defaultPersona);
+    }
+    
+    private Response savePersona(IHTTPSession session) {
+        String body = getRequestBody(session);
+        
+        // Validate JSON
+        try {
+            Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
+            gson.fromJson(body, mapType);
+        } catch (Exception e) {
+            return jsonResponse(Response.Status.BAD_REQUEST, mapOf("error", "Invalid JSON: " + e.getMessage()));
+        }
+        
+        ConfigEntity config = new ConfigEntity("persona", body, System.currentTimeMillis());
+        getDatabase().configDao().setConfig(config);
+        
+        Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
+        Map<String, Object> persona = gson.fromJson(body, mapType);
+        return jsonResponse(Response.Status.OK, persona);
     }
     
     // ─────────────────────────────────────────────────────────────────────────
