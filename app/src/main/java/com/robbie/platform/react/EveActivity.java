@@ -23,9 +23,12 @@ import com.ainirobot.agent.base.Transcription;
 import com.ainirobot.coreservice.client.ApiListener;
 import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.listener.ActionListener;
+import com.ainirobot.coreservice.client.listener.CommandListener;
+import com.ainirobot.coreservice.client.Definition;
 import com.ainirobot.coreservice.client.person.PersonApi;
 import com.ainirobot.coreservice.client.person.PersonListener;
 import com.ainirobot.coreservice.client.listener.Person;
+import org.json.JSONArray;
 import com.robbie.moduleapp.lidd.RobotApp;
 import com.robbie.platform.retail.AsyncTaskHelper;
 import com.robbie.platform.retail.Product;
@@ -77,6 +80,9 @@ public class EveActivity extends ReactActivity {
     private boolean isFollowing = false;
     private int currentFollowId = -1;
     private PersonListener personListener;
+    private int navReqId = 3001;
+    private boolean isNavigating = false;
+    private final List<String> mapPlaces = new ArrayList<>();
 
     @Override
     protected String getMainComponentName() {
@@ -97,9 +103,17 @@ public class EveActivity extends ReactActivity {
         
         uploadCatalogInfoToAgent();
         
-        AgentCore.INSTANCE.enableWakeupMode(true);
+        // Desactivar wake word - el robot escucha sin necesidad de decir "Robbie"
+        AgentCore.INSTANCE.enableWakeupMode(false);
         AgentCore.INSTANCE.setEnableWakeFree(true);
-        Log.d(TAG, "Wake mode: hardware=ON, wake-free=ON (no wake word filter)");
+        
+        // Asegurar que el micrófono NO esté muteado
+        AgentCore.INSTANCE.setMicrophoneMuted(false);
+        
+        // Habilitar la barra de voz del sistema (muestra ASR/TTS)
+        AgentCore.INSTANCE.setEnableVoiceBar(true);
+        
+        Log.d(TAG, "Wake mode: OFF, wake-free=ON, mic=ON, voiceBar=ON");
         
         setLightSolidColor(0xFF0000);
         
@@ -357,6 +371,47 @@ public class EveActivity extends ReactActivity {
                             return true;
                         }
                     }
+                ))
+                // Action: Navegar a un punto del mapa
+                .registerAction(new Action(
+                    "com.robbie.action.NAVIGATE_TO_LOCATION",
+                    "Ir a ubicacion",
+                    "Lleva al robot a un punto o seccion mapeada en la tienda. Usa este action cuando el usuario pida ir a una seccion, area o punto especifico como proteinas, vitaminas, caja, entrada, etc.",
+                    Arrays.asList(
+                        new Parameter("destination", ParameterType.STRING,
+                            "Nombre del punto de destino al que el robot debe navegar, por ejemplo: proteinas, vitaminas, caja, entrada", true, null)
+                    ),
+                    new ActionExecutor() {
+                        @Override
+                        public boolean onExecute(Action action, Bundle params) {
+                            String destination = params != null ? params.getString("destination", "") : "";
+                            Log.d(TAG, "Action NAVIGATE: destination=" + destination);
+                            if (destination.isEmpty()) {
+                                AgentCore.INSTANCE.tts("No entendi a donde quieres ir. Dime el nombre de la seccion.", 10000, null);
+                                action.notify(successResult(), false);
+                                return true;
+                            }
+                            mainHandler.post(() -> navigateToLocation(destination, action));
+                            return true;
+                        }
+                    }
+                ))
+                // Action: Detener navegacion
+                .registerAction(new Action(
+                    "com.robbie.action.STOP_NAVIGATION",
+                    "Detener navegacion",
+                    "Detiene el movimiento del robot. Usa este action cuando el usuario pida parar, detenerse, o cancelar el recorrido.",
+                    null,
+                    new ActionExecutor() {
+                        @Override
+                        public boolean onExecute(Action action, Bundle params) {
+                            Log.d(TAG, "Action STOP_NAVIGATION");
+                            mainHandler.post(() -> stopNavigation());
+                            AgentCore.INSTANCE.tts("De acuerdo, me detengo.", 10000, null);
+                            action.notify(successResult(), false);
+                            return true;
+                        }
+                    }
                 ));
 
             Log.i(TAG, "PageAgent inicializado con Actions de emociones y productos");
@@ -420,6 +475,7 @@ public class EveActivity extends ReactActivity {
                     Log.d(TAG, "RobotApi connected — starting person detection");
                     registerPersonDetection();
                     tryFollowVisiblePerson();
+                    loadPlaceList();
                 }
 
                 @Override
@@ -529,17 +585,34 @@ public class EveActivity extends ReactActivity {
     }
 
     private void uploadCatalogInfoToAgent() {
-        List<Product> products = getProducts();
-        if (products.isEmpty()) return;
-        StringBuilder info = new StringBuilder("Catalogo - " + products.size() + " productos:\n");
-        int max = Math.min(products.size(), 20);
-        for (int i = 0; i < max; i++) {
-            Product p = products.get(i);
-            info.append("- ").append(p.getName())
-                .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
-                .append(" [").append(p.getCategory()).append("]\n");
+        StringBuilder info = new StringBuilder();
+        
+        // Incluir puntos del mapa para navegacion
+        if (!mapPlaces.isEmpty()) {
+            info.append("UBICACIONES DISPONIBLES EN LA TIENDA (el robot puede navegar a estos puntos):\n");
+            for (String place : mapPlaces) {
+                info.append("- ").append(place).append("\n");
+            }
+            info.append("\nCuando el usuario pida ir a una seccion, usa la accion NAVIGATE_TO_LOCATION con el nombre exacto del punto.\n\n");
         }
-        AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
+        
+        // Incluir productos
+        List<Product> products = getProducts();
+        if (!products.isEmpty()) {
+            info.append("Catalogo - ").append(products.size()).append(" productos:\n");
+            int max = Math.min(products.size(), 20);
+            for (int i = 0; i < max; i++) {
+                Product p = products.get(i);
+                info.append("- ").append(p.getName())
+                    .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
+                    .append(" [").append(p.getCategory()).append("]\n");
+            }
+        }
+        
+        if (info.length() > 0) {
+            AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
+            Log.d(TAG, "Interface info uploaded: " + mapPlaces.size() + " places, " + products.size() + " products");
+        }
     }
 
     private void triggerRecommendation(String userNeed, String restriction) {
@@ -711,6 +784,168 @@ public class EveActivity extends ReactActivity {
             Log.w(TAG, "Error getting products from config", e);
         }
         return new ArrayList<>();
+    }
+
+    // ==================== Navigation ====================
+
+    private void loadPlaceList() {
+        if (robotApi == null) return;
+        try {
+            robotApi.getPlaceList(navReqId++, new CommandListener() {
+                @Override
+                public void onResult(int result, String message) {
+                    try {
+                        mapPlaces.clear();
+                        JSONArray jsonArray = new JSONArray(message);
+                        for (int i = 0; i < jsonArray.length(); i++) {
+                            JSONObject json = jsonArray.getJSONObject(i);
+                            String name = json.getString("name");
+                            int status = json.optInt("status", 0);
+                            if (status == 0) { // solo puntos accesibles
+                                mapPlaces.add(name);
+                            }
+                        }
+                        Log.i(TAG, "Map places loaded: " + mapPlaces.size() + " -> " + mapPlaces);
+                        // Actualizar la info del agente para incluir los puntos
+                        mainHandler.post(() -> uploadCatalogInfoToAgent());
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error parsing place list", e);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading place list", e);
+        }
+    }
+
+    private void navigateToLocation(String destination, Action action) {
+        if (!robotApiConnected || robotApi == null) {
+            AgentCore.INSTANCE.tts("No puedo navegar en este momento, el sistema de movimiento no esta conectado.", 10000, null);
+            action.notify(successResult(), false);
+            return;
+        }
+
+        if (isNavigating) {
+            stopNavigation();
+        }
+
+        // Buscar el punto mas parecido en la lista
+        String matchedPlace = findBestMatchingPlace(destination);
+
+        if (matchedPlace == null) {
+            String available = mapPlaces.isEmpty() ? "No hay puntos configurados." 
+                : "Los puntos disponibles son: " + String.join(", ", mapPlaces);
+            AgentCore.INSTANCE.tts("No encontre la seccion " + destination + ". " + available, 15000, null);
+            action.notify(successResult(), false);
+            return;
+        }
+
+        isNavigating = true;
+        // Detener face tracking durante la navegacion
+        stopFaceTracking();
+
+        AgentCore.INSTANCE.tts("Vamos, te llevo a " + matchedPlace, 10000, null);
+        Log.i(TAG, "Starting navigation to: " + matchedPlace);
+
+        try {
+            robotApi.startNavigation(navReqId++, matchedPlace, 0.2, 30000,
+                new ActionListener() {
+                    @Override
+                    public void onResult(int status, String response) {
+                        isNavigating = false;
+                        if (status == Definition.RESULT_OK && "true".equals(response)) {
+                            Log.i(TAG, "Navigation SUCCESS to " + matchedPlace);
+                            AgentCore.INSTANCE.tts("Llegamos a " + matchedPlace + ". Aqui esta la seccion que buscabas.", 15000, null);
+                        } else {
+                            Log.w(TAG, "Navigation ended: status=" + status + " response=" + response);
+                            AgentCore.INSTANCE.tts("No pude llegar a " + matchedPlace + ", algo salio mal.", 10000, null);
+                        }
+                        action.notify(successResult(), false);
+                        // Reanudar face tracking
+                        mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+                    }
+
+                    @Override
+                    public void onError(int errorCode, String errorString) {
+                        isNavigating = false;
+                        Log.e(TAG, "Navigation ERROR: code=" + errorCode + " msg=" + errorString);
+                        String errorMsg;
+                        switch (errorCode) {
+                            case Definition.ERROR_DESTINATION_NOT_EXIST:
+                                errorMsg = "El punto " + matchedPlace + " no existe en el mapa.";
+                                break;
+                            case Definition.ERROR_NOT_ESTIMATE:
+                                errorMsg = "No estoy ubicado en el mapa, necesito que me ubiquen primero.";
+                                break;
+                            case Definition.ERROR_IN_DESTINATION:
+                                errorMsg = "Ya estamos en " + matchedPlace + ".";
+                                break;
+                            default:
+                                errorMsg = "No pude navegar a " + matchedPlace + ".";
+                                break;
+                        }
+                        AgentCore.INSTANCE.tts(errorMsg, 10000, null);
+                        action.notify(successResult(), false);
+                        mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+                    }
+
+                    @Override
+                    public void onStatusUpdate(int status, String data, String extraData) {
+                        Log.d(TAG, "Navigation status: " + status + " data=" + data);
+                    }
+                });
+        } catch (Exception e) {
+            isNavigating = false;
+            Log.e(TAG, "Error starting navigation", e);
+            AgentCore.INSTANCE.tts("Error al intentar navegar.", 10000, null);
+            action.notify(successResult(), false);
+            mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+        }
+    }
+
+    private void stopNavigation() {
+        if (robotApi != null && isNavigating) {
+            try {
+                robotApi.stopNavigation(navReqId++);
+                isNavigating = false;
+                Log.d(TAG, "Navigation stopped");
+            } catch (Exception e) {
+                Log.e(TAG, "Error stopping navigation", e);
+            }
+        }
+    }
+
+    private String findBestMatchingPlace(String destination) {
+        if (mapPlaces.isEmpty()) return null;
+        String destLower = destination.toLowerCase().trim();
+
+        // 1. Coincidencia exacta
+        for (String place : mapPlaces) {
+            if (place.equalsIgnoreCase(destLower)) {
+                return place;
+            }
+        }
+
+        // 2. El punto contiene el destino o viceversa
+        for (String place : mapPlaces) {
+            String placeLower = place.toLowerCase();
+            if (placeLower.contains(destLower) || destLower.contains(placeLower)) {
+                return place;
+            }
+        }
+
+        // 3. Alguna palabra coincide
+        String[] destWords = destLower.split("\\s+");
+        for (String place : mapPlaces) {
+            String placeLower = place.toLowerCase();
+            for (String word : destWords) {
+                if (word.length() >= 3 && placeLower.contains(word)) {
+                    return place;
+                }
+            }
+        }
+
+        return null;
     }
 
     public static void launch(Activity fromActivity) {
