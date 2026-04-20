@@ -12,6 +12,11 @@ import com.robbie.data.server.RobbieApiService;
 import com.robbie.platform.react.PlatformReactNativeHost;
 import com.robbie.platform.retail.RobbieConfig;
 import com.robbie.platform.retail.Product;
+import com.robbie.core.hardware.SensorManager;
+import com.robbie.core.hardware.LedController;
+import com.robbie.core.hardware.ActuatorManager;
+import com.robbie.core.navigation.NavigationManager;
+import com.robbie.core.modes.ModeManager;
 import com.facebook.react.ReactApplication;
 import com.facebook.react.ReactNativeHost;
 import com.ainirobot.agent.AppAgent;
@@ -54,7 +59,10 @@ public class RobotApp extends Application implements ReactApplication {
         // 2. Iniciar servidor API local para administración remota
         startApiServer();
 
-        // 3. Inicializar Agent SDK (AgentOS) con persona configurable
+        // 3. Inicializar subsistemas de hardware y navegacion
+        initializeCoreManagers();
+
+        // 4. Inicializar Agent SDK (AgentOS) con persona configurable
         initializeAgentOS();
 
         Log.i(TAG, "robbie inicializado correctamente");
@@ -77,6 +85,19 @@ public class RobotApp extends Application implements ReactApplication {
             Log.i(TAG, "API Server iniciado - URL: " + RobbieApiService.getServerUrl(this));
         } catch (Exception e) {
             Log.e(TAG, "Error iniciando API Server", e);
+        }
+    }
+
+    private void initializeCoreManagers() {
+        try {
+            SensorManager.getInstance(this).initialize();
+            LedController.getInstance();
+            ActuatorManager.getInstance();
+            NavigationManager.getInstance(this);
+            ModeManager.getInstance(this);
+            Log.i(TAG, "Core managers initialized");
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing core managers", e);
         }
     }
 

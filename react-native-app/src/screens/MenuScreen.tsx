@@ -37,6 +37,14 @@ const allMenuItems: MenuItem[] = [
     screen: 'Promo',
   },
   {
+    id: 'navigate',
+    title: 'Navegar',
+    description: 'Ir a ubicación',
+    icon: '🧭',
+    color: '#E4027C',
+    screen: 'Navigate',
+  },
+  {
     id: 'search',
     title: 'Buscar',
     description: 'Búsqueda por voz',
@@ -47,7 +55,7 @@ const allMenuItems: MenuItem[] = [
 ];
 
 export const MenuScreen: React.FC = () => {
-  const { menuTemplate, setMenuTemplate, setCurrentMode } = useAppStore();
+  const { menuTemplate, setMenuTemplate, setCurrentMode, setUiConfig, startNavigation } = useAppStore();
   const [menuItems, setMenuItems] = useState<MenuItem[]>(allMenuItems);
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +80,11 @@ export const MenuScreen: React.FC = () => {
         console.log('[MenuScreen] No hay validScreens, mostrando todas');
         setMenuItems(allMenuItems);
       }
+
+      if (config.uiConfig) {
+        setUiConfig(config.uiConfig);
+        console.log('[MenuScreen] uiConfig aplicado:', JSON.stringify(config.uiConfig));
+      }
     } catch (error) {
       console.error('[MenuScreen] Error cargando configuración:', error);
       // En caso de error, mostrar todas las pantallas
@@ -86,7 +99,12 @@ export const MenuScreen: React.FC = () => {
   };
 
   const handleMenuPress = (item: MenuItem) => {
-    setCurrentMode(item.screen.toLowerCase());
+    if (item.screen === 'Navigate') {
+      // Iniciar navegación de ejemplo
+      startNavigation('Sección de Electrónica', 5, 15);
+    } else {
+      setCurrentMode(item.screen.toLowerCase());
+    }
   };
 
   if (loading) {

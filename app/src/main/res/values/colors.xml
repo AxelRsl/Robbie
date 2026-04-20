@@ -1,10 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#1A237E</color>
-    <color name="primary_dark">#000051</color>
-    <color name="accent">#00695C</color>
+    <!-- Ikalp brand palette -->
+    <color name="primary">#E4027C</color>
+    <color name="primary_dark">#A80059</color>
+    <color name="primary_light">#FF5CAD</color>
+    <color name="accent">#00BFA5</color>
+    <color name="accent_dark">#008E76</color>
     <color name="white">#FFFFFF</color>
     <color name="background">#FAFAFA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="error">#D32F2F</color>
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
+    <color name="text_on_primary">#FFFFFF</color>
+    <color name="divider">#E0E0E0</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="status_bar">#A80059</color>
+    <!-- Mode indicator colors -->
+    <color name="mode_retail">#E4027C</color>
+    <color name="mode_exhibition">#6200EA</color>
+    <color name="mode_idle">#455A64</color>
+    <!-- Sensor status colors -->
+    <color name="sensor_active">#4CAF50</color>
+    <color name="sensor_inactive">#9E9E9E</color>
+    <color name="sensor_error">#F44336</color>
+    <!-- LED default -->
+    <color name="led_default">#E4027C</color>
 </resources>

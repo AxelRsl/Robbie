@@ -80,16 +80,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Servicio de habilidades -->
-        <service
-            android:name="com.ainirobot.platform.control.SkillService"
-            android:exported="true"
-            android:enabled="true">
-            <intent-filter>
-                <action android:name="com.ainirobot.platform.SKILL_SERVICE" />
-            </intent-filter>
-        </service>
-
         <!-- Servicio de agente IA -->
         <service
             android:name="com.ainirobot.agent.AgentClientService"
@@ -97,17 +87,6 @@
             android:enabled="true">
             <intent-filter>
                 <action android:name="com.ainirobot.agent.AGENT_CLIENT" />
-            </intent-filter>
-        </service>
-
-        <!-- Servicio de videollamadas MQTT -->
-        <service
-            android:name="com.ainirobot.call.mqtt.CallMqttService"
-            android:exported="true"
-            android:enabled="true"
-            android:foregroundServiceType="phoneCall">
-            <intent-filter>
-                <action android:name="com.ainirobot.call.MQTT_SERVICE" />
             </intent-filter>
         </service>
 

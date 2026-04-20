@@ -1,15 +1,17 @@
 # Robbie - Robot Retail Assistant
 
-Aplicacion Android para robots de servicio OrionStar/AiNiRobot con capacidades de asistente retail inteligente.
+Aplicación Android para robots de servicio OrionStar/AiNiRobot con capacidades de asistente retail inteligente basado en Agent OS SDK 0.4.5-SNAPSHOT.
 
-## Caracteristicas
+## Características
 
-- 🤖 **Face Tracking**: Detecta y sigue personas automaticamente
-- 💡 **Control de Luces LED**: Indicadores visuales de estado
-- 🎤 **Wake Word Detection**: Activacion por voz con "Robbie"
-- 🛍️ **Catalogo de Productos**: Gestion dinamica de productos
+- 🤖 **Face Tracking**: Detecta y sigue personas automáticamente
+- 💡 **Control de Luces LED**: Efectos visuales programables (SOLID, BREATHING, BLINK, RAINBOW, PULSE, WAVE)
+- 🎤 **Agent OS Integration**: Integración completa con Agent OS SDK para ASR/TTS/LLM
+- 🛍️ **Catálogo de Productos**: Gestión dinámica con búsqueda inteligente
 - 🧠 **Recomendaciones IA**: Motor de recomendaciones con Azure OpenAI
-- ⚙️ **Configuracion Dinamica**: API REST para configuracion remota
+- 🗺️ **Navegación Autónoma**: Sistema de navegación por waypoints
+- ⚙️ **Configuración Dinámica**: API REST para configuración remota
+- 🏗️ **Arquitectura Modular**: Separación clara entre Agent OS y lógica de negocio
 
 ---
 
@@ -82,29 +84,42 @@ En Android Studio:
 robbie/
 ├── app/                             # Aplicación Android nativa
 │   ├── src/main/java/com/robbie/
-│   │   ├── base/                    # Configuración base
-│   │   │   └── config/
-│   │   │       ├── RemoteConfigManager.java      # Gestión de config OrionStar
-│   │   │       └── RobbieConfigApiClient.java    # Cliente API de configuración
+│   │   ├── core/                    # Módulos centrales del robot
+│   │   │   ├── hardware/
+│   │   │   │   ├── LedController.java           # Control de LEDs con efectos
+│   │   │   │   ├── SensorManager.java           # Gestión unificada de sensores
+│   │   │   │   └── ActuatorManager.java         # Control de movimiento
+│   │   │   ├── navigation/
+│   │   │   │   └── NavigationManager.java       # Sistema de navegación
+│   │   │   └── modes/
+│   │   │       ├── ModeManager.java             # Gestión de modos
+│   │   │       ├── RetailMode.java              # Comportamientos retail
+│   │   │       └── ExhibitionMode.java          # Comportamientos exhibición
+│   │   ├── data/                    # Capa de datos
+│   │   │   ├── local/
+│   │   │   │   ├── RobbieDatabase.java          # Base de datos local
+│   │   │   │   └── entity/ProductEntity.java    # Entidades de BD
+│   │   │   └── remote/              # APIs remotas
 │   │   ├── moduleapp/lidd/
 │   │   │   └── RobotApp.java        # Application class principal
 │   │   └── platform/
+│   │       ├── agent/               # 🏗️ NUEVA ARQUITECTURA AGENT OS
+│   │       │   ├── IAgentBridge.java            # Interface para Agent OS
+│   │       │   ├── RobbieAgentBridge.java       # Implementación Agent OS SDK
+│   │       │   └── RobotActionHandler.java      # Lógica de acciones del robot
 │   │       ├── react/               # Integración React Native
-│   │       │   ├── EveActivity.java             # Activity principal RN
+│   │       │   ├── EveActivity.java             # Activity principal (refactorizada)
 │   │       │   ├── PlatformReactNativeHost.java # Host RN
-│   │       │   └── modules/                     # Módulos nativos
+│   │       │   └── modules/                     # Módulos nativos RN
 │   │       │       ├── ProductsModule.java      # Productos desde API
 │   │       │       ├── RobbieConfigModule.java  # Configuración dinámica
-│   │       │       ├── RobotSkillModule.java    # Habilidades del robot
-│   │       │       ├── AgentModule.java         # Agent SDK
-│   │       │       └── ...                      # Otros módulos
+│   │       │       ├── AgentModule.java         # Bridge Agent SDK
+│   │       │       ├── LedModule.java           # Control LEDs desde RN
+│   │       │       └── ProductSearchModule.java # Búsqueda de productos
 │   │       └── retail/              # Funcionalidades retail
-│   │           ├── RobbieRetailActivity.java    # Activity retail con agente
-│   │           ├── RobbieConfig.java            # Modelo de configuración
 │   │           ├── Product.java                 # Modelo de producto
-│   │           ├── ProductAdapter.java          # Adaptador de productos
 │   │           ├── RecommendationEngine.java    # Motor de recomendaciones AI
-│   │           └── AsyncTaskHelper.java         # Utilidades async
+│   │           └── RobbieConfig.java            # Modelo de configuración
 │   ├── src/main/res/                # Recursos Android
 │   └── build.gradle                 # Dependencias de la app
 │
@@ -158,30 +173,45 @@ Ver [robbie-config-api/README.md](robbie-config-api/README.md) para mas detalles
 
 ## Uso
 
-### Interaccion por Voz
+### Interacción por Voz
 
 ```
-Usuario: "Robbie, necesito proteina sin lactosa"
-→ Robot recomienda productos automaticamente
+Usuario: "¿Qué vitaminas tienes?"
+→ Robot busca productos → Muestra resultados en pantalla → TTS explica
+
+Usuario: "Llévame a la sección de proteínas"
+→ Robot navega automáticamente → Informa llegada
+
+Usuario: "Cambia las luces a azul"
+→ Robot cambia LEDs → Confirma acción
 ```
 
-### Wake Word
+### Capacidades del Robot
 
-El robot detecta las siguientes variantes:
-- Robbie
-- Robi
-- Rubi
-- Robin
-- Robe
-- Robby
-- Lobi
+#### 🎤 **Procesamiento de Voz**
+- ASR (Automatic Speech Recognition) integrado
+- TTS (Text-to-Speech) con respuestas naturales
+- LLM para comprensión contextual
+- Sin wake word (siempre escuchando)
 
-### Face Tracking
-
-El robot automaticamente:
-1. Detecta personas en su campo de vision
-2. Sigue con la cabeza a la persona mas cercana
+#### 🤖 **Face Tracking**
+El robot automáticamente:
+1. Detecta personas en su campo de visión
+2. Sigue con la cabeza a la persona más cercana
 3. Reconecta si pierde el tracking
+4. Se detiene durante navegación
+
+#### 🗺️ **Navegación Autónoma**
+- Navegación por waypoints configurados
+- Detección de obstáculos
+- Cancelación por voz ("detente", "para")
+- Reporte de estado en tiempo real
+
+#### 💡 **Control de LEDs**
+- 6 efectos programables: SOLID, BREATHING, BLINK, RAINBOW, PULSE, WAVE
+- Colores personalizables por voz o API
+- Indicadores de estado (escuchando, procesando, navegando)
+- Paleta Ikalp por defecto (#E4027C)
 
 ---
 
@@ -192,8 +222,11 @@ El robot automaticamente:
 - Android Studio Arctic Fox o superior
 - JDK 8 o superior
 - Gradle 7.5 o superior
-- Android SDK 26+ (minSdk)
-- Robot OrionStar o emulador
+- Android SDK 26+ (minSdk), compileSdk 34
+- **Agent OS SDK 0.4.5-SNAPSHOT** (com.orionstar.agent:sdk)
+- Robot OrionStar con Agent OS o emulador
+- React Native 0.71.8 (embebido)
+- Node.js 16+ (para robbie-config-api opcional)
 
 ### Build Variants
 
@@ -227,25 +260,90 @@ adb logcat | grep -E "RobotApp|EveActivity|RecommendationEngine"
 
 ## Arquitectura
 
-### Componentes Principales
+### 🏗️ Nueva Arquitectura Modular (v2.0)
 
-1. **RobotApp**: Application class, inicializa servicios
-2. **EveActivity**: Activity principal con React Native
-3. **PageAgent**: Agente de voz con Actions personalizadas
-4. **RecommendationEngine**: Motor de recomendaciones con Azure OpenAI
-5. **RobbieConfig**: Gestor de configuracion dinamica
+La aplicación ha sido refactorizada con una arquitectura limpia que separa las responsabilidades:
 
-### Flujo de Datos
+#### Componentes Principales
+
+1. **IAgentBridge**: Interface que abstrae el Agent OS
+2. **RobbieAgentBridge**: Implementación concreta del Agent OS SDK 0.4.5-SNAPSHOT
+3. **RobotActionHandler**: Centraliza toda la lógica de acciones del robot
+4. **EveActivity**: Activity principal, solo maneja eventos y callbacks
+5. **Core Modules**: Módulos centrales (hardware, navegación, modos)
+
+#### Beneficios de la Nueva Arquitectura
+
+- ✅ **Separación de responsabilidades**: Agent OS vs. lógica de negocio
+- ✅ **Testeable**: Cada componente es independiente
+- ✅ **Mantenible**: Cambios en Agent OS no afectan la lógica del robot
+- ✅ **Escalable**: Fácil agregar nuevas funcionalidades
+- ✅ **Intercambiable**: Se puede cambiar de Agent OS sin afectar el resto
+
+### Flujo de Datos (Nueva Arquitectura)
 
 ```
-Usuario habla → Wake Word Detection → AgentCore.query()
+Usuario habla → RobbieAgentBridge (Agent OS SDK)
     ↓
-LLM decide Action → RECOMMEND_PRODUCTS
+IAgentBridge.ActionCallback → RobotActionHandler
     ↓
-RecommendationEngine → Azure OpenAI → Productos recomendados
+RobotActionHandler ejecuta acción → Core Modules (LED, Navigation, etc.)
     ↓
-TTS explica → Eventos a React Native → UI actualizada
+ActionResultCallback → EveActivity
+    ↓
+Eventos React Native → UI actualizada
 ```
+
+### Patrón de Arquitectura
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   EveActivity   │◄──►│ RobbieAgentBridge│◄──►│   Agent OS SDK  │
+│   (UI Events)   │    │  (Agent Bridge)  │    │ (ASR/TTS/LLM)   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐    ┌──────────────────┐
+│ React Native UI │    │RobotActionHandler│
+│   (Frontend)    │    │ (Business Logic) │
+└─────────────────┘    └──────────────────┘
+                                │
+                                ▼
+                    ┌──────────────────┐
+                    │   Core Modules   │
+                    │ (LED, Nav, etc.) │
+                    └──────────────────┘
+```
+
+### 🆕 Cambios en la Nueva Arquitectura (v2.0)
+
+#### Antes (Arquitectura Monolítica)
+- ❌ EveActivity contenía toda la lógica (>1000 líneas)
+- ❌ PageAgent mezclado con lógica de negocio
+- ❌ Difícil de testear y mantener
+- ❌ Acoplamiento fuerte con Agent OS SDK
+
+#### Ahora (Arquitectura Modular)
+- ✅ **EveActivity**: Solo maneja eventos y callbacks (~300 líneas)
+- ✅ **IAgentBridge**: Abstracción del Agent OS
+- ✅ **RobbieAgentBridge**: Implementación específica del SDK
+- ✅ **RobotActionHandler**: Toda la lógica de acciones centralizada
+- ✅ **Core Modules**: Hardware, navegación y modos separados
+
+#### Beneficios Técnicos
+- 🔧 **Mantenibilidad**: Cada clase tiene una responsabilidad única
+- 🧪 **Testeable**: Se pueden hacer mocks de cada componente
+- 🔄 **Intercambiable**: Fácil cambiar de Agent OS a otro sistema
+- 📈 **Escalable**: Agregar nuevas funcionalidades es más simple
+- 🐛 **Debuggeable**: Errores más fáciles de localizar
+
+#### Módulos Eliminados (Limpieza de Código)
+- 🗑️ `AsyncTaskHelper.java` - No se usaba
+- 🗑️ `ProductAdapter.java` - RecyclerView innecesario
+- 🗑️ `RobbieRetailActivity.java` - Reemplazado por EveActivity
+- 🗑️ `ModeModule.java` - No se usaba en React Native
+- 🗑️ `MovementModule.java` - No se usaba en React Native
+- 🗑️ `OrionAuthManager.java` - No se usaba
 
 ---
 

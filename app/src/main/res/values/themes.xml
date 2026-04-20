@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Robbie" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#1A237E</item>
-        <item name="colorPrimaryVariant">#000051</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">#00695C</item>
-        <item name="colorSecondaryVariant">#003D33</item>
-        <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="android:statusBarColor">#000051</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorOnPrimary">@color/text_on_primary</item>
+        <item name="colorSecondary">@color/accent</item>
+        <item name="colorSecondaryVariant">@color/accent_dark</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorError">@color/error</item>
+        <item name="android:statusBarColor">@color/status_bar</item>
+        <item name="android:navigationBarColor">@color/primary_dark</item>
+        <item name="android:windowBackground">@color/background</item>
     </style>
 </resources>

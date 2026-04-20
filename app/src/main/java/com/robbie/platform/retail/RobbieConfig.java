@@ -26,6 +26,9 @@ public class RobbieConfig {
     private List<ActionConfig> actions;
     private String pageObjective;
     private List<String> validScreens;
+    private boolean showSearchBar;
+    private boolean showMicButton;
+    private int retailColumns;
     
     public RobbieConfig() {
         this.persona = "Tu nombre es Robbie. Eres un asistente de tienda retail amigable y profesional.";
@@ -41,6 +44,9 @@ public class RobbieConfig {
         this.validScreens.add("Cart");
         this.validScreens.add("Profile");
         this.validScreens.add("Search");
+        this.showSearchBar = false;
+        this.showMicButton = false;
+        this.retailColumns = 4;
         initializeDefaultActions();
     }
     
@@ -85,6 +91,14 @@ public class RobbieConfig {
                         }
                     }
                     
+                    // Cargar uiConfig
+                    JSONObject uiConfigJson = json.optJSONObject("uiConfig");
+                    if (uiConfigJson != null) {
+                        config.showSearchBar = uiConfigJson.optBoolean("showSearchBar", false);
+                        config.showMicButton = uiConfigJson.optBoolean("showMicButton", false);
+                        config.retailColumns = uiConfigJson.optInt("retailColumns", 4);
+                    }
+
                     // Cargar configuracion de PageAgent
                     config.pageObjective = json.optString("pageObjective", config.pageObjective);
                     
@@ -186,6 +200,10 @@ public class RobbieConfig {
         actions.add(navigate);
     }
     
+    public boolean isShowSearchBar() { return showSearchBar; }
+    public boolean isShowMicButton() { return showMicButton; }
+    public int getRetailColumns() { return retailColumns; }
+
     public String getPersona() { return persona; }
     public String getObjective() { return objective; }
     public String getStoreName() { return storeName; }

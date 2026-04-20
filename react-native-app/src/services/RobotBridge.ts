@@ -7,6 +7,7 @@ const {
   CloudApiModule,
   ProductsModule,
   AgentModule,
+  LedModule,
 } = NativeModules;
 
 export class RobotBridge {
@@ -161,5 +162,73 @@ export class RobotBridge {
       return [];
     }
   }
+
+  // --- Control de LEDs ---
+  
+  static async setLedColor(hexColor: string): Promise<void> {
+    try {
+      await LedModule.setSolidColor(hexColor);
+      console.log('[RobotBridge] Color LED establecido:', hexColor);
+    } catch (error) {
+      console.error('Error estableciendo color LED:', error);
+      throw error;
+    }
+  }
+
+  static async startLedEffect(effect: string, hexColor: string): Promise<void> {
+    try {
+      await LedModule.startEffect(effect, hexColor);
+      console.log('[RobotBridge] Efecto LED iniciado:', effect, hexColor);
+    } catch (error) {
+      console.error('Error iniciando efecto LED:', error);
+      throw error;
+    }
+  }
+
+  static async stopLedEffect(): Promise<void> {
+    try {
+      await LedModule.stopEffect();
+      console.log('[RobotBridge] Efecto LED detenido');
+    } catch (error) {
+      console.error('Error deteniendo efecto LED:', error);
+      throw error;
+    }
+  }
+
+  static async restoreLedDefault(): Promise<void> {
+    try {
+      await LedModule.restoreDefault();
+      console.log('[RobotBridge] LEDs restaurados a color por defecto');
+    } catch (error) {
+      console.error('Error restaurando LEDs:', error);
+      throw error;
+    }
+  }
+
+  static async setLedBrightness(brightness: number): Promise<void> {
+    try {
+      await LedModule.setBrightness(brightness);
+      console.log('[RobotBridge] Brillo LED establecido:', brightness);
+    } catch (error) {
+      console.error('Error estableciendo brillo LED:', error);
+      throw error;
+    }
+  }
+
+  static async getLedStatus(): Promise<any> {
+    try {
+      const statusJson = await LedModule.getStatus();
+      return JSON.parse(statusJson);
+    } catch (error) {
+      console.error('Error obteniendo estado LED:', error);
+      return null;
+    }
+  }
+
+  static async stopNavigation(): Promise<void> {
+    try {
+      const { RobotNavigationModule } = NativeModules;
+      await RobotNavigationModule.stopNavigation();
+      console.log('[RobotBridge] Navegación detenida');
 
 }

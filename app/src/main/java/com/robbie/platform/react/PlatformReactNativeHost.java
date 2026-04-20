@@ -13,6 +13,8 @@ import com.robbie.platform.react.modules.RobotSkillModule;
 import com.robbie.platform.react.modules.CloudApiModule;
 import com.robbie.platform.react.modules.ProductsModule;
 import com.robbie.platform.react.modules.RobbieConfigModule;
+import com.robbie.platform.react.modules.LedModule;
+import com.robbie.platform.react.modules.ProductSearchModule;
 import com.facebook.react.ReactNativeHost;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.shell.MainReactPackage;
@@ -63,6 +65,8 @@ public class PlatformReactNativeHost extends ReactNativeHost {
                 modules.add(new ProductsModule(reactContext));
                 modules.add(new AgentModule(reactContext));
                 modules.add(new RobbieConfigModule(reactContext));
+                modules.add(new LedModule(reactContext));
+                modules.add(new ProductSearchModule(reactContext));
                 return modules;
             }
             

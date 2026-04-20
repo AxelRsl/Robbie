@@ -37,6 +37,12 @@ export interface Promotion {
   discount: number;
 }
 
+export interface UiConfig {
+  showSearchBar: boolean;
+  showMicButton: boolean;
+  retailColumns: number;
+}
+
 export type RetailTemplate = 'grid' | 'list';
 export type MenuTemplate = 'classic' | 'modern';
 export type PromoTemplate = 'video' | 'carousel';
@@ -70,4 +76,11 @@ export interface OPKPlugin {
   filename: string;
   name: string;
   version: string;
+}
+
+export interface NavigationState {
+  destination: string;
+  isNavigating: boolean;
+  estimatedTime?: number;
+  distance?: number;
 }

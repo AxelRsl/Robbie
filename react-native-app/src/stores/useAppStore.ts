@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { RetailTemplate, MenuTemplate, PromoTemplate, Product } from '@/types';
+import type { RetailTemplate, MenuTemplate, PromoTemplate, Product, UiConfig, NavigationState } from '@/types';
+
+const DEFAULT_UI_CONFIG: UiConfig = {
+  showSearchBar: false,
+  showMicButton: false,
+  retailColumns: 4,
+};
 
 interface AppState {
   retailTemplate: RetailTemplate;
@@ -8,6 +14,10 @@ interface AppState {
   currentMode: string;
   searchQuery: string;
   selectedProduct: Product | null;
+  uiConfig: UiConfig;
+  navigation: NavigationState | null;
+  searchRecommendation: string;
+  searchResults: Product[];
   
   setRetailTemplate: (template: RetailTemplate) => void;
   setMenuTemplate: (template: MenuTemplate) => void;
@@ -15,6 +25,11 @@ interface AppState {
   setCurrentMode: (mode: string) => void;
   setSearchQuery: (query: string) => void;
   setSelectedProduct: (product: Product | null) => void;
+  setUiConfig: (config: Partial<UiConfig>) => void;
+  setNavigation: (navigation: NavigationState | null) => void;
+  startNavigation: (destination: string, estimatedTime?: number, distance?: number) => void;
+  setSearchRecommendation: (recommendation: string) => void;
+  setSearchResults: (results: Product[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -24,6 +39,10 @@ export const useAppStore = create<AppState>((set) => ({
   currentMode: 'menu',
   searchQuery: '',
   selectedProduct: null,
+  uiConfig: DEFAULT_UI_CONFIG,
+  navigation: null,
+  searchRecommendation: '',
+  searchResults: [],
   
   setRetailTemplate: (template) => set({ retailTemplate: template }),
   setMenuTemplate: (template) => set({ menuTemplate: template }),
@@ -31,4 +50,17 @@ export const useAppStore = create<AppState>((set) => ({
   setCurrentMode: (mode) => set({ currentMode: mode }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSelectedProduct: (product) => set({ selectedProduct: product }),
+  setUiConfig: (config) => set((state) => ({ uiConfig: { ...state.uiConfig, ...config } })),
+  setNavigation: (navigation) => set({ navigation }),
+  startNavigation: (destination, estimatedTime, distance) => set({
+    currentMode: 'navigating',
+    navigation: {
+      destination,
+      isNavigating: true,
+      estimatedTime,
+      distance,
+    },
+  }),
+  setSearchRecommendation: (recommendation) => set({ searchRecommendation: recommendation }),
+  setSearchResults: (results) => set({ searchResults: results }),
 }));
