@@ -230,5 +230,9 @@ export class RobotBridge {
       const { RobotNavigationModule } = NativeModules;
       await RobotNavigationModule.stopNavigation();
       console.log('[RobotBridge] Navegación detenida');
-
+    } catch (error) {
+      console.error('[RobotBridge] Error deteniendo navegación:', error);
+      throw error;
+    }
+  }
 }

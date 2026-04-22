@@ -13,6 +13,7 @@ import com.facebook.react.ReactActivity;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import com.robbie.core.hardware.LedController;
+import com.robbie.core.navigation.TourExecutor;
 import com.robbie.data.local.entity.ProductEntity;
 import com.robbie.platform.agent.IAgentBridge;
 import com.robbie.platform.agent.RobbieAgentBridge;
@@ -56,6 +57,8 @@ public class EveActivity extends ReactActivity {
 
         actionHandler.setAgentBridge(agentBridge);
         actionHandler.setResultCallback(createResultCallback());
+
+        TourExecutor.getInstance().setAgentBridge(agentBridge);
 
         agentBridge.initialize(
             this,

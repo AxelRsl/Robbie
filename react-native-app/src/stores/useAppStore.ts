@@ -18,6 +18,8 @@ interface AppState {
   navigation: NavigationState | null;
   searchRecommendation: string;
   searchResults: Product[];
+  products: Product[];
+  productsLoaded: boolean;
   
   setRetailTemplate: (template: RetailTemplate) => void;
   setMenuTemplate: (template: MenuTemplate) => void;
@@ -30,6 +32,8 @@ interface AppState {
   startNavigation: (destination: string, estimatedTime?: number, distance?: number) => void;
   setSearchRecommendation: (recommendation: string) => void;
   setSearchResults: (results: Product[]) => void;
+  setProducts: (products: Product[]) => void;
+  setProductsLoaded: (loaded: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -43,6 +47,8 @@ export const useAppStore = create<AppState>((set) => ({
   navigation: null,
   searchRecommendation: '',
   searchResults: [],
+  products: [],
+  productsLoaded: false,
   
   setRetailTemplate: (template) => set({ retailTemplate: template }),
   setMenuTemplate: (template) => set({ menuTemplate: template }),
@@ -63,4 +69,6 @@ export const useAppStore = create<AppState>((set) => ({
   }),
   setSearchRecommendation: (recommendation) => set({ searchRecommendation: recommendation }),
   setSearchResults: (results) => set({ searchResults: results }),
+  setProducts: (products) => set({ products, productsLoaded: true }),
+  setProductsLoaded: (loaded) => set({ productsLoaded: loaded }),
 }));

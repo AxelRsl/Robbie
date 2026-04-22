@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   FlatList,
@@ -20,8 +20,6 @@ import { LedHelper } from '@/utils/LedHelper';
 const { ProductSearchModule } = NativeModules;
 
 export const RetailScreen: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   
@@ -33,12 +31,12 @@ export const RetailScreen: React.FC = () => {
     uiConfig,
     searchRecommendation,
     setSearchRecommendation,
-    setSearchResults: setStoreSearchResults
+    setSearchResults: setStoreSearchResults,
+    products,
+    productsLoaded,
   } = useAppStore();
 
   useEffect(() => {
-    loadProducts();
-    
     // Establecer color Ikalp sólido al cargar la pantalla
     LedHelper.setIkalpPrimary().catch(error => {
       console.warn('[RetailScreen] No se pudo establecer color Ikalp:', error);
@@ -70,23 +68,6 @@ export const RetailScreen: React.FC = () => {
       modeSwitchListener.remove();
     };
   }, []);
-
-  const loadProducts = async () => {
-    console.log('[RetailScreen] Iniciando carga de productos...');
-    setLoading(true);
-    try {
-      const data = await CloudApi.getProducts();
-      console.log('[RetailScreen] Productos cargados:', data.length, 'items');
-      if (data.length > 0) {
-        console.log('[RetailScreen] Primeros 3 productos:', data.slice(0, 3).map(p => p.name));
-      }
-      setProducts(data);
-    } catch (error) {
-      console.error('[RetailScreen] Error loading products:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSearch = async (query: string) => {
     console.log('[RetailScreen] Buscando productos con query:', query);
@@ -141,7 +122,7 @@ export const RetailScreen: React.FC = () => {
 
   const displayProducts = searchResults.length > 0 ? searchResults : products;
 
-  if (loading) {
+  if (!productsLoaded) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#00695C" />

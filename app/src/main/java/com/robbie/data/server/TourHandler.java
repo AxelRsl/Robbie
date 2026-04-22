@@ -8,6 +8,8 @@ import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.entity.ConfigEntity;
 import com.robbie.data.local.entity.TourStopEntity;
 
+import com.robbie.core.navigation.TourExecutor;
+
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -122,6 +124,30 @@ public class TourHandler extends BaseHandler {
     // ─────────────────────────────────────────────────────────────────────────
 
     public Response handleRoutes(Method method, List<String> parts, IHTTPSession session) {
+        // Handle action endpoints: /api/tour-routes/{id}/start|stop|status
+        if (parts.size() >= 4) {
+            String routeId = parts.get(2);
+            String action = parts.get(3);
+            switch (action) {
+                case "start":
+                    return startTourRoute(routeId);
+                case "stop":
+                    return stopTourRoute();
+                case "status":
+                    return getTourStatus();
+            }
+        }
+
+        // Handle /api/tour-routes/status (no routeId)
+        if (parts.size() == 3 && "status".equals(parts.get(2))) {
+            return getTourStatus();
+        }
+
+        // Handle /api/tour-routes/stop
+        if (parts.size() == 3 && "stop".equals(parts.get(2)) && method == Method.POST) {
+            return stopTourRoute();
+        }
+
         switch (method) {
             case GET:
                 if (parts.size() >= 3) {
@@ -143,6 +169,66 @@ public class TourHandler extends BaseHandler {
             default:
                 return jsonResponse(Response.Status.METHOD_NOT_ALLOWED, mapOf("error", "Method not allowed"));
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TOUR EXECUTION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private Response startTourRoute(String routeId) {
+        try {
+            // Find the route
+            List<Map<String, Object>> routes = loadRoutesList();
+            Map<String, Object> route = null;
+            for (Map<String, Object> r : routes) {
+                if (routeId.equals(r.get("id"))) {
+                    route = r;
+                    break;
+                }
+            }
+            if (route == null) {
+                return jsonResponse(Response.Status.NOT_FOUND, mapOf("error", "Route not found"));
+            }
+
+            String routeName = route.get("name") != null ? route.get("name").toString() : "Tour";
+            Object stopsObj = route.get("stops");
+            if (!(stopsObj instanceof List)) {
+                return jsonResponse(Response.Status.BAD_REQUEST, mapOf("error", "Route has no stops"));
+            }
+            List<Map<String, Object>> stops = (List<Map<String, Object>>) stopsObj;
+
+            TourExecutor executor = TourExecutor.getInstance();
+            if (executor.isRunning()) {
+                return jsonResponse(Response.Status.CONFLICT, mapOf("error", "A tour is already running. Stop it first."));
+            }
+
+            executor.startTour(routeId, routeName, stops);
+            Log.i(TAG, "Tour started: " + routeName + " (" + stops.size() + " stops)");
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("message", "Tour started: " + routeName);
+            result.put("stops", stops.size());
+            return jsonResponse(Response.Status.OK, result);
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting tour", e);
+            return jsonResponse(Response.Status.INTERNAL_ERROR, mapOf("error", e.getMessage()));
+        }
+    }
+
+    private Response stopTourRoute() {
+        TourExecutor executor = TourExecutor.getInstance();
+        executor.stopTour();
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "Tour stopped");
+        return jsonResponse(Response.Status.OK, result);
+    }
+
+    private Response getTourStatus() {
+        TourExecutor executor = TourExecutor.getInstance();
+        return jsonResponse(Response.Status.OK, executor.getStatus());
     }
 
     private Response getAllRoutes() {

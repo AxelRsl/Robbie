@@ -108,6 +108,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             registerProductActions();
             registerNavigationActions();
             registerLedActions();
+            registerTourActions();
 
             ready = true;
             Log.i(TAG, "RobbieAgentBridge initialized with all actions");
@@ -387,6 +388,35 @@ public class RobbieAgentBridge implements IAgentBridge {
             null,
             (action, params) -> {
                 dispatchAction("com.robbie.action.RESTORE_LED_DEFAULT", action, params);
+                return true;
+            }
+        ));
+    }
+
+    private void registerTourActions() {
+        // Action: Iniciar tour
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.START_TOUR",
+            "Iniciar tour",
+            "Inicia un recorrido guiado por la tienda. Usa este action cuando el usuario pida un tour, recorrido, visita guiada o quiera conocer la tienda. Si el usuario no especifica cual tour, inicia el primer tour publicado disponible.",
+            Arrays.asList(
+                new Parameter("routeName", ParameterType.STRING,
+                    "Nombre del tour a iniciar (opcional, usa el primer tour publicado si no se especifica)", false, null)
+            ),
+            (action, params) -> {
+                dispatchAction("com.robbie.action.START_TOUR", action, params);
+                return true;
+            }
+        ));
+
+        // Action: Detener tour
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.STOP_TOUR",
+            "Detener tour",
+            "Detiene el tour o recorrido guiado actual. Usa este action cuando el usuario pida detener, parar o cancelar el tour.",
+            Collections.emptyList(),
+            (action, params) -> {
+                dispatchAction("com.robbie.action.STOP_TOUR", action, params);
                 return true;
             }
         ));

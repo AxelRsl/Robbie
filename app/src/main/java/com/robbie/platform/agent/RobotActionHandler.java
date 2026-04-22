@@ -6,6 +6,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.robbie.core.hardware.LedController;
+import com.robbie.core.navigation.TourExecutor;
 import com.robbie.moduleapp.lidd.RobotApp;
 import com.robbie.platform.retail.Product;
 import com.robbie.platform.retail.RecommendationEngine;
@@ -120,6 +121,10 @@ public class RobotActionHandler {
                 return handleStartLedEffect(params);
             case "com.robbie.action.RESTORE_LED_DEFAULT":
                 return handleRestoreLedDefault();
+            case "com.robbie.action.START_TOUR":
+                return handleStartTour(params);
+            case "com.robbie.action.STOP_TOUR":
+                return handleStopTour();
             default:
                 Log.w(TAG, "Unknown action: " + actionName);
                 return false;
@@ -792,5 +797,119 @@ public class RobotActionHandler {
 
     public List<String> getMapPlaces() {
         return mapPlaces;
+    }
+
+    // ==================== Tour ====================
+
+    private boolean handleStartTour(Bundle params) {
+        String routeName = params != null ? params.getString("routeName", "") : "";
+        Log.d(TAG, "START_TOUR: routeName=" + routeName);
+
+        mainHandler.post(() -> {
+            try {
+                TourExecutor executor = TourExecutor.getInstance();
+                if (executor.isRunning()) {
+                    if (agentBridge != null)
+                        agentBridge.tts("Ya hay un tour en curso. Si quieres, puedo detenerlo primero.", 10000);
+                    return;
+                }
+
+                // Load published routes from DB
+                RobbieDatabase db = RobbieDatabase.getInstance(context);
+                com.robbie.data.local.entity.ConfigEntity entity = db.configDao().getConfig("tour_routes");
+                if (entity == null || entity.getValue() == null) {
+                    if (agentBridge != null)
+                        agentBridge.tts("No hay tours configurados. Puedes crear uno desde el panel de administracion.", 10000);
+                    return;
+                }
+
+                org.json.JSONArray routesArray = new org.json.JSONArray(entity.getValue());
+                java.util.Map<String, Object> selectedRoute = null;
+
+                for (int i = 0; i < routesArray.length(); i++) {
+                    org.json.JSONObject routeJson = routesArray.getJSONObject(i);
+                    boolean published = routeJson.optBoolean("published", false);
+                    if (!published) continue;
+
+                    String name = routeJson.optString("name", "");
+                    if (!routeName.isEmpty() && name.toLowerCase().contains(routeName.toLowerCase())) {
+                        selectedRoute = jsonObjectToMap(routeJson);
+                        break;
+                    }
+                    if (selectedRoute == null) {
+                        selectedRoute = jsonObjectToMap(routeJson);
+                    }
+                }
+
+                if (selectedRoute == null) {
+                    if (agentBridge != null)
+                        agentBridge.tts("No encontre ningun tour publicado. Crea y publica uno desde el panel.", 10000);
+                    return;
+                }
+
+                String tourName = (String) selectedRoute.get("name");
+                Object stopsObj = selectedRoute.get("stops");
+                if (!(stopsObj instanceof java.util.List)) {
+                    if (agentBridge != null)
+                        agentBridge.tts("El tour " + tourName + " no tiene paradas configuradas.", 10000);
+                    return;
+                }
+
+                @SuppressWarnings("unchecked")
+                java.util.List<java.util.Map<String, Object>> stops =
+                    (java.util.List<java.util.Map<String, Object>>) stopsObj;
+
+                String routeId = (String) selectedRoute.get("id");
+                executor.startTour(routeId, tourName, stops);
+                Log.i(TAG, "Tour started via voice: " + tourName);
+            } catch (Exception e) {
+                Log.e(TAG, "Error starting tour", e);
+                if (agentBridge != null)
+                    agentBridge.tts("Lo siento, hubo un error al iniciar el tour.", 10000);
+            }
+        });
+        return true;
+    }
+
+    private boolean handleStopTour() {
+        Log.d(TAG, "STOP_TOUR");
+        mainHandler.post(() -> {
+            TourExecutor executor = TourExecutor.getInstance();
+            if (executor.isRunning()) {
+                executor.stopTour();
+            } else {
+                if (agentBridge != null)
+                    agentBridge.tts("No hay ningun tour en curso.", 8000);
+            }
+        });
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String, Object> jsonObjectToMap(org.json.JSONObject json) {
+        java.util.Map<String, Object> map = new java.util.HashMap<>();
+        java.util.Iterator<String> keys = json.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object val = json.opt(key);
+            if (val instanceof org.json.JSONArray) {
+                java.util.List<Object> list = new java.util.ArrayList<>();
+                org.json.JSONArray arr = (org.json.JSONArray) val;
+                for (int i = 0; i < arr.length(); i++) {
+                    Object item = arr.opt(i);
+                    if (item instanceof org.json.JSONObject) {
+                        list.add(jsonObjectToMap((org.json.JSONObject) item));
+                    } else {
+                        list.add(item);
+                    }
+                }
+                map.put(key, list);
+            } else if (val instanceof org.json.JSONObject) {
+                map.put(key, jsonObjectToMap((org.json.JSONObject) val));
+            } else {
+                map.put(key, val);
+            }
+        }
+        return map;
     }
 }

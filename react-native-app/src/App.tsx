@@ -10,10 +10,19 @@ import { CloudApi } from '@/services/CloudApi';
 import { useAppStore } from '@/stores/useAppStore';
 
 export default function App() {
-  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode } = useAppStore();
+  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts } = useAppStore();
 
   useEffect(() => {
-    // CloudApi.initialize(); // Comentado: credenciales invalidas, usar modo local
+    // Cargar productos una sola vez al inicio de la app
+    if (!productsLoaded) {
+      console.log('[App] Cargando productos al inicio...');
+      CloudApi.getProducts().then((data) => {
+        console.log('[App] Productos cargados al inicio:', data.length, 'items');
+        setProducts(data);
+      }).catch((error) => {
+        console.error('[App] Error cargando productos al inicio:', error);
+      });
+    }
 
     // Escuchar eventos de navegacion desde el lado nativo
     const eventEmitter = new NativeEventEmitter(NativeModules.DeviceEventEmitter);
