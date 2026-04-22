@@ -23,8 +23,28 @@ public class ProductHandler extends BaseHandler {
 
     private static final String TAG = "ProductHandler";
 
+    public interface OnProductsChangedListener {
+        void onProductsChanged();
+    }
+
+    private OnProductsChangedListener changedListener;
+
     public ProductHandler(RobbieDatabase db, Gson gson) {
         super(db, gson);
+    }
+
+    public void setOnProductsChangedListener(OnProductsChangedListener listener) {
+        this.changedListener = listener;
+    }
+
+    private void notifyProductsChanged() {
+        if (changedListener != null) {
+            try {
+                changedListener.onProductsChanged();
+            } catch (Exception e) {
+                Log.w(TAG, "Error notifying products changed", e);
+            }
+        }
     }
 
     @Override
@@ -78,6 +98,7 @@ public class ProductHandler extends BaseHandler {
         product.setUpdatedAt(System.currentTimeMillis());
 
         db.productDao().insertProduct(product);
+        notifyProductsChanged();
         return jsonResponse(Response.Status.CREATED, product);
     }
 
@@ -110,16 +131,19 @@ public class ProductHandler extends BaseHandler {
         existing.setUpdatedAt(System.currentTimeMillis());
 
         db.productDao().updateProduct(existing);
+        notifyProductsChanged();
         return jsonResponse(Response.Status.OK, existing);
     }
 
     private Response delete(String id) {
         db.productDao().deleteProductById(id);
+        notifyProductsChanged();
         return jsonResponse(Response.Status.OK, mapOf("message", "Product deleted"));
     }
 
     private Response deleteAll() {
         db.productDao().deleteAllProducts();
+        notifyProductsChanged();
         return jsonResponse(Response.Status.OK, mapOf("message", "All products deleted"));
     }
 
@@ -151,6 +175,7 @@ public class ProductHandler extends BaseHandler {
         }
 
         db.productDao().insertProducts(products);
+        notifyProductsChanged();
 
         Map<String, Object> result = new HashMap<>();
         result.put("message", "Products created");

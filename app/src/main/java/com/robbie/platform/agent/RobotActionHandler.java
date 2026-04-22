@@ -658,21 +658,48 @@ public class RobotActionHandler {
             info.append("\nCuando el usuario pida ir a una seccion, usa la accion NAVIGATE_TO_LOCATION con el nombre exacto del punto.\n\n");
         }
 
-        List<Product> products = getProducts();
-        if (!products.isEmpty()) {
-            info.append("Catalogo - ").append(products.size()).append(" productos:\n");
-            int max = Math.min(products.size(), 20);
+        // Leer productos de Room DB (fuente primaria, gestionada por el panel)
+        List<ProductEntity> dbProducts = getProductsFromDb();
+        if (!dbProducts.isEmpty()) {
+            info.append("CATALOGO DE PRODUCTOS DISPONIBLES - ").append(dbProducts.size()).append(" productos:\n");
+            int max = Math.min(dbProducts.size(), 30);
             for (int i = 0; i < max; i++) {
-                Product p = products.get(i);
-                info.append("- ").append(p.getName())
-                    .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
-                    .append(" [").append(p.getCategory()).append("]\n");
+                ProductEntity p = dbProducts.get(i);
+                info.append("- ").append(p.getName());
+                if (p.getPrice() > 0) {
+                    info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
+                }
+                info.append(" [").append(p.getCategory()).append("]");
+                if (p.getBrand() != null && !p.getBrand().isEmpty()) {
+                    info.append(" marca: ").append(p.getBrand());
+                }
+                if (!p.getInStock()) {
+                    info.append(" (AGOTADO)");
+                }
+                info.append("\n");
+            }
+            if (dbProducts.size() > max) {
+                info.append("... y ").append(dbProducts.size() - max).append(" productos mas disponibles.\n");
+            }
+            info.append("\nCuando el usuario pregunte por productos, usa la accion SEARCH_PRODUCTS para buscar en la base de datos.\n");
+        } else {
+            // Fallback: productos de RobbieConfig (API remota)
+            List<Product> products = getProducts();
+            if (!products.isEmpty()) {
+                info.append("Catalogo - ").append(products.size()).append(" productos:\n");
+                int max = Math.min(products.size(), 20);
+                for (int i = 0; i < max; i++) {
+                    Product p = products.get(i);
+                    info.append("- ").append(p.getName())
+                        .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
+                        .append(" [").append(p.getCategory()).append("]\n");
+                }
             }
         }
 
         if (info.length() > 0 && agentBridge != null) {
             agentBridge.uploadInterfaceInfo(info.toString());
-            Log.d(TAG, "Interface info uploaded: " + mapPlaces.size() + " places, " + products.size() + " products");
+            Log.d(TAG, "Interface info uploaded: " + mapPlaces.size() + " places, " + dbProducts.size() + " db products");
         }
     }
 
@@ -706,6 +733,17 @@ public class RobotActionHandler {
     }
 
     // ==================== Utilidades ====================
+
+    private List<ProductEntity> getProductsFromDb() {
+        try {
+            RobbieDatabase db = RobbieDatabase.getInstance(context);
+            List<ProductEntity> products = db.productDao().getAllProductsSync();
+            return products != null ? products : new ArrayList<>();
+        } catch (Exception e) {
+            Log.w(TAG, "Error getting products from DB", e);
+        }
+        return new ArrayList<>();
+    }
 
     private List<Product> getProducts() {
         try {

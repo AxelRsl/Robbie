@@ -7,6 +7,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.robbie.data.local.RobbieDatabase;
 
+import com.robbie.data.local.entity.ProductEntity;
+import com.ainirobot.agent.AgentCore;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +58,31 @@ public class RobbieApiServer extends NanoHTTPD {
         RobbieDatabase db = getDatabase();
         if (productHandler == null) {
             productHandler = new ProductHandler(db, gson);
+            productHandler.setOnProductsChangedListener(() -> {
+                // Cuando los productos cambian via la API, actualizar contexto del agente
+                try {
+                    List<ProductEntity> products = db.productDao().getAllProductsSync();
+                    if (products != null && !products.isEmpty()) {
+                        StringBuilder info = new StringBuilder();
+                        info.append("CATALOGO DE PRODUCTOS ACTUALIZADO - ").append(products.size()).append(" productos:\n");
+                        int max = Math.min(products.size(), 30);
+                        for (int i = 0; i < max; i++) {
+                            ProductEntity p = products.get(i);
+                            info.append("- ").append(p.getName());
+                            if (p.getPrice() > 0)
+                                info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
+                            info.append(" [").append(p.getCategory()).append("]");
+                            if (p.getBrand() != null && !p.getBrand().isEmpty())
+                                info.append(" marca: ").append(p.getBrand());
+                            info.append("\n");
+                        }
+                        AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
+                        Log.i(TAG, "Agent context updated with " + products.size() + " products from DB");
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not update agent context after product change", e);
+                }
+            });
             mapHandler = new MapHandler(db, gson);
             robotMapHandler = new RobotMapHandler(db, gson);
             tourHandler = new TourHandler(db, gson);

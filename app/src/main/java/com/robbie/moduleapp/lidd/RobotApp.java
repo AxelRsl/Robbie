@@ -24,6 +24,8 @@ import com.ainirobot.agent.AgentCore;
 import com.ainirobot.agent.action.Action;
 import com.ainirobot.agent.action.Actions;
 
+import java.util.List;
+
 /**
  * Application principal de xiabao_lidd.
  *
@@ -156,42 +158,64 @@ public class RobotApp extends Application implements ReactApplication {
 
     private void uploadProductsToAgent(RobbieConfig config) {
         try {
-            if (config.getProducts() == null || config.getProducts().isEmpty()) {
-                Log.w(TAG, "No hay productos para subir al agente");
+            // Fuente primaria: Room DB (productos gestionados por el panel)
+            List<com.robbie.data.local.entity.ProductEntity> dbProducts = null;
+            try {
+                com.robbie.data.local.RobbieDatabase db = com.robbie.data.local.RobbieDatabase.getInstance(this);
+                dbProducts = db.productDao().getAllProductsSync();
+            } catch (Exception e) {
+                Log.w(TAG, "Could not read products from DB", e);
+            }
+
+            StringBuilder productsInfo = new StringBuilder();
+
+            if (dbProducts != null && !dbProducts.isEmpty()) {
+                // Usar productos de Room DB (gestionados por el panel)
+                productsInfo.append("CATALOGO DE PRODUCTOS - ").append(dbProducts.size()).append(" productos:\n");
+                int max = Math.min(dbProducts.size(), 30);
+                for (int i = 0; i < max; i++) {
+                    com.robbie.data.local.entity.ProductEntity p = dbProducts.get(i);
+                    productsInfo.append("- ").append(p.getName());
+                    if (p.getPrice() > 0) {
+                        productsInfo.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
+                    }
+                    productsInfo.append(" [").append(p.getCategory()).append("]");
+                    if (p.getBrand() != null && !p.getBrand().isEmpty()) {
+                        productsInfo.append(" marca: ").append(p.getBrand());
+                    }
+                    productsInfo.append("\n");
+                }
+                if (dbProducts.size() > max) {
+                    productsInfo.append("... y ").append(dbProducts.size() - max).append(" productos mas\n");
+                }
+                Log.i(TAG, "Productos de Room DB subidos al agente: " + dbProducts.size());
+            } else if (config.getProducts() != null && !config.getProducts().isEmpty()) {
+                // Fallback: productos de RobbieConfig (API remota)
+                int maxProducts = Math.min(config.getProducts().size(), 20);
+                productsInfo.append("Catálogo ").append(config.getStoreName())
+                           .append(" - ").append(config.getProducts().size()).append(" productos:\n");
+                for (int i = 0; i < maxProducts; i++) {
+                    Product product = config.getProducts().get(i);
+                    productsInfo.append("- ").append(product.getName());
+                    if (product.getPrice() > 0) {
+                        productsInfo.append(" ($").append(String.format("%.0f", product.getPrice())).append(")");
+                    }
+                    if (product.getCategory() != null) {
+                        productsInfo.append(" [").append(product.getCategory()).append("]");
+                    }
+                    productsInfo.append("\n");
+                }
+                if (config.getProducts().size() > maxProducts) {
+                    productsInfo.append("... y ").append(config.getProducts().size() - maxProducts)
+                               .append(" productos más\n");
+                }
+                Log.i(TAG, "Productos de config API subidos al agente: " + config.getProducts().size());
+            } else {
+                Log.w(TAG, "No hay productos para subir al agente (ni en DB ni en config)");
                 return;
             }
 
-            // Limitar a 20 productos para no saturar al agente (patrón ROBBI-GNC)
-            int maxProducts = Math.min(config.getProducts().size(), 20);
-            StringBuilder productsInfo = new StringBuilder();
-            productsInfo.append("Catálogo ").append(config.getStoreName())
-                       .append(" - ").append(config.getProducts().size()).append(" productos:\n");
-            
-            for (int i = 0; i < maxProducts; i++) {
-                Product product = config.getProducts().get(i);
-                productsInfo.append("- ").append(product.getName());
-                
-                if (product.getPrice() > 0) {
-                    productsInfo.append(" ($").append(String.format("%.0f", product.getPrice())).append(")");
-                }
-                
-                if (product.getCategory() != null) {
-                    productsInfo.append(" [").append(product.getCategory()).append("]");
-                }
-                
-                productsInfo.append("\n");
-            }
-            
-            if (config.getProducts().size() > maxProducts) {
-                productsInfo.append("... y ").append(config.getProducts().size() - maxProducts)
-                           .append(" productos más\n");
-            }
-            
-            // Subir información al agente
             AgentCore.INSTANCE.uploadInterfaceInfo(productsInfo.toString());
-            Log.i(TAG, "Información de " + maxProducts + "/" + config.getProducts().size() 
-                     + " productos subida al agente");
-            
         } catch (Exception e) {
             Log.e(TAG, "Error subiendo productos al agente", e);
         }
