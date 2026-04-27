@@ -97,6 +97,7 @@ public class RobotApp extends Application implements ReactApplication {
             ActuatorManager.getInstance();
             NavigationManager.getInstance(this);
             ModeManager.getInstance(this);
+            com.robbie.core.media.TourMediaPlayer.getInstance().initialize(this);
             Log.i(TAG, "Core managers initialized");
         } catch (Exception e) {
             Log.e(TAG, "Error initializing core managers", e);

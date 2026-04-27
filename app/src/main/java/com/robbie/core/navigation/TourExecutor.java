@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.robbie.core.media.TourMediaPlayer;
+
 /**
  * Ejecuta un tour (ruta) completo: navega a cada stop, habla el contenido,
  * espera el dwellTime y avanza al siguiente.
@@ -47,6 +49,7 @@ public class TourExecutor {
     private int navReqId = 7001;
     private int retryCount = 0;
     private static final int MAX_RETRIES = 5;
+    private String tourIdForMedia = "";
 
     private final List<TourListener> listeners = new ArrayList<>();
 
@@ -105,7 +108,11 @@ public class TourExecutor {
         this.stopping = false;
         this.retryCount = 0;
 
-        Log.i(TAG, "Starting tour '" + routeName + "' with " + stops.size() + " stops");
+        // Extract numeric tour ID for media paths (e.g., "route_123" -> "123")
+        this.tourIdForMedia = routeId.replaceAll("[^0-9]", "");
+        if (tourIdForMedia.isEmpty()) tourIdForMedia = String.valueOf(System.currentTimeMillis());
+
+        Log.i(TAG, "Starting tour '" + routeName + "' with " + stops.size() + " stops (mediaId=" + tourIdForMedia + ")");
         for (int i = 0; i < stops.size(); i++) {
             Map<String, Object> s = stops.get(i);
             Log.i(TAG, "  Stop " + (i+1) + ": name='" + getStr(s, "name", "?") + "' mapPosition='" + getStr(s, "mapPosition", "?") + "'");
@@ -116,6 +123,15 @@ public class TourExecutor {
         if (chassisController != null) {
             Log.i(TAG, "Stopping face tracking to release chassis for tour");
             chassisController.stopFaceTracking();
+        }
+
+        // CRITICAL: Mute microphone during tour to prevent motor/ambient noise
+        // from triggering ASR which auto-interrupts TTS playback
+        try {
+            AgentCore.INSTANCE.setMicrophoneMuted(true);
+            Log.i(TAG, "Microphone muted for tour");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not mute microphone: " + e.getMessage());
         }
 
         // Ensure tour execution runs on main thread (critical for RobotApi calls)
@@ -155,8 +171,24 @@ public class TourExecutor {
         }
 
         handler.removeCallbacksAndMessages(null);
+
+        // Stop any playing media
+        try {
+            TourMediaPlayer.getInstance().stopAll();
+        } catch (Exception e) {
+            Log.w(TAG, "Error stopping media", e);
+        }
+
         speak("Tour detenido.");
         Log.i(TAG, "Tour stopped by user");
+
+        // Restore microphone
+        try {
+            AgentCore.INSTANCE.setMicrophoneMuted(false);
+            Log.i(TAG, "Microphone unmuted after tour stop");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not unmute mic: " + e.getMessage());
+        }
 
         // Restore face tracking after tour stops
         if (chassisController != null) {
@@ -333,19 +365,72 @@ public class TourExecutor {
         String stopName = getStr(stop, "name", "");
         String broadcast = getStr(stop, "broadcastContent", "");
         int dwellTime = getInt(stop, "dwellTime", 10);
+        String mediaType = getStr(stop, "mediaType", "tts");
 
-        // Speak the broadcast content for this stop
+        Log.i(TAG, "Arrived at: " + stopName + " | mediaType=" + mediaType);
+
+        // 1. Speak the broadcast content (TTS)
         if (!broadcast.isEmpty()) {
             speak(broadcast);
         } else {
-            speak("Hemos llegado a " + stopName);
+            speak("Bienvenido a " + stopName);
         }
 
-        // Wait dwellTime then move to next stop
-        long waitMs = Math.max(5000, dwellTime * 1000L);
-        Log.d(TAG, "Dwelling at " + stopName + " for " + dwellTime + "s");
+        // 2. Play multimedia if configured (video, images, background music)
+        boolean hasMedia = !"tts".equals(mediaType);
+        if (hasMedia) {
+            // Log all media-related fields for debugging
+            String videoUrl = getStr(stop, "videoUrl", "");
+            String musicTrack = getStr(stop, "musicTrack", "");
+            Log.i(TAG, "  Media config: videoUrl='" + videoUrl + "' musicTrack='" + musicTrack + "'");
+            Log.i(TAG, "  tourIdForMedia='" + tourIdForMedia + "'");
+            Log.i(TAG, "  Expected video path: /storage/emulated/0/moduledata/module_guide/" + tourIdForMedia + "/" + videoUrl);
+
+            // Check if the file exists
+            if (!videoUrl.isEmpty()) {
+                java.io.File videoFile = new java.io.File("/storage/emulated/0/moduledata/module_guide/" + tourIdForMedia + "/" + videoUrl);
+                Log.i(TAG, "  Video file exists: " + videoFile.exists() + " path: " + videoFile.getAbsolutePath());
+                // Also list files in the tour directory for debugging
+                java.io.File tourDir = new java.io.File("/storage/emulated/0/moduledata/module_guide/" + tourIdForMedia);
+                if (tourDir.exists() && tourDir.isDirectory()) {
+                    String[] files = tourDir.list();
+                    Log.i(TAG, "  Files in tour dir (" + (files != null ? files.length : 0) + "): "
+                            + (files != null ? java.util.Arrays.toString(files) : "[]"));
+                } else {
+                    Log.w(TAG, "  Tour directory does NOT exist: " + tourDir.getAbsolutePath());
+                }
+            }
+
+            try {
+                TourMediaPlayer mediaPlayer = TourMediaPlayer.getInstance();
+                mediaPlayer.playStopMedia(tourIdForMedia, stop, () -> {
+                    Log.i(TAG, "Media playback finished at: " + stopName);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error playing media at " + stopName, e);
+            }
+        }
+
+        // 3. Wait dwellTime then move to next stop
+        //    For media stops, extend dwell time to allow video/slideshow to play
+        long waitMs;
+        if (hasMedia && "video".equals(mediaType)) {
+            // For video, wait at least 120s (video will auto-close, but we need time)
+            waitMs = Math.max(120000, dwellTime * 1000L);
+            Log.d(TAG, "Dwelling at " + stopName + " for " + (waitMs/1000) + "s (extended for video)");
+        } else if (hasMedia && "image".equals(mediaType)) {
+            waitMs = Math.max(30000, dwellTime * 1000L);
+            Log.d(TAG, "Dwelling at " + stopName + " for " + (waitMs/1000) + "s (extended for images)");
+        } else {
+            waitMs = Math.max(5000, dwellTime * 1000L);
+            Log.d(TAG, "Dwelling at " + stopName + " for " + dwellTime + "s");
+        }
 
         handler.postDelayed(() -> {
+            // Stop any media still playing before moving on
+            try {
+                TourMediaPlayer.getInstance().stopAll();
+            } catch (Exception ignored) {}
             currentStopIndex++;
             navigateToCurrentStop();
         }, waitMs);
@@ -353,6 +438,12 @@ public class TourExecutor {
 
     private void completeTour() {
         running = false;
+
+        // Stop any remaining media
+        try {
+            TourMediaPlayer.getInstance().stopAll();
+        } catch (Exception ignored) {}
+
         speak("El tour " + currentRouteName + " ha finalizado. Gracias por acompañarme.");
         Log.i(TAG, "Tour '" + currentRouteName + "' completed");
 
@@ -364,26 +455,37 @@ public class TourExecutor {
             }, 3000);
         }
 
+        // Restore microphone
+        try {
+            AgentCore.INSTANCE.setMicrophoneMuted(false);
+            Log.i(TAG, "Microphone unmuted after tour completion");
+        } catch (Exception e) {
+            Log.w(TAG, "Could not unmute mic: " + e.getMessage());
+        }
+
         notifyCompleted(currentRouteId);
     }
 
     private void speak(String text) {
         Log.i(TAG, "[TTS] " + text);
-        // Try agentBridge first, fallback to AgentCore.tts
-        boolean spoken = false;
-        if (agentBridge != null) {
-            try {
-                agentBridge.tts(text, 20000);
-                spoken = true;
-            } catch (Exception e) {
-                Log.w(TAG, "agentBridge TTS error: " + e.getMessage());
-            }
-        }
-        if (!spoken) {
-            try {
-                AgentCore.INSTANCE.tts(text, 20000, null);
-            } catch (Exception e) {
-                Log.w(TAG, "AgentCore TTS fallback error: " + e.getMessage());
+        // Microphone is muted during the tour (set in startTour) to prevent
+        // motor noise from triggering ASR which auto-interrupts TTS (per SDK docs).
+        // Stop any previous TTS to ensure this message plays clearly.
+        try {
+            AgentCore.INSTANCE.stopTTS();
+        } catch (Exception ignored) {}
+
+        try {
+            AgentCore.INSTANCE.tts(text, 30000, null);
+        } catch (Exception e) {
+            Log.e(TAG, "[TTS] AgentCore.tts() threw exception: " + e.getMessage(), e);
+            // Last resort fallback via agentBridge
+            if (agentBridge != null) {
+                try {
+                    agentBridge.tts(text, 20000);
+                } catch (Exception e2) {
+                    Log.e(TAG, "[TTS] agentBridge fallback also failed: " + e2.getMessage());
+                }
             }
         }
     }

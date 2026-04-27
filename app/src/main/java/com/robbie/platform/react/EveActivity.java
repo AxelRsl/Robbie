@@ -65,6 +65,9 @@ public class EveActivity extends ReactActivity {
             (actionName, params) -> actionHandler.handleAction(actionName, params),
             createTranscriptionCallback()
         );
+
+        // Register this activity for video dialog display during tours
+        com.robbie.core.media.TourMediaPlayer.getInstance().setCurrentActivity(this);
     }
 
     @Override

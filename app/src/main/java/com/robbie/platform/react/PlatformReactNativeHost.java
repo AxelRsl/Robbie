@@ -15,6 +15,8 @@ import com.robbie.platform.react.modules.ProductsModule;
 import com.robbie.platform.react.modules.RobbieConfigModule;
 import com.robbie.platform.react.modules.LedModule;
 import com.robbie.platform.react.modules.ProductSearchModule;
+import com.robbie.platform.react.modules.TourMediaModule;
+
 import com.facebook.react.ReactNativeHost;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.shell.MainReactPackage;
@@ -53,6 +55,7 @@ public class PlatformReactNativeHost extends ReactNativeHost {
         packages.add(new RNFSPackage());
         packages.add(new RNGestureHandlerPackage());
         
+        
         // Módulos nativos para aplicación retail
         packages.add(new ReactPackage() {
             @Override
@@ -67,6 +70,7 @@ public class PlatformReactNativeHost extends ReactNativeHost {
                 modules.add(new RobbieConfigModule(reactContext));
                 modules.add(new LedModule(reactContext));
                 modules.add(new ProductSearchModule(reactContext));
+                modules.add(new TourMediaModule(reactContext));
                 return modules;
             }
             
