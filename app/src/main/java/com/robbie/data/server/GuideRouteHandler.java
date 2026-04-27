@@ -61,11 +61,19 @@ public class GuideRouteHandler extends BaseHandler {
                 case GET:
                     return mediaFile != null ? serveMediaFile(tourId, mediaFile) : listMedia(tourId);
                 case POST:
-                    return uploadMedia(tourId, session);
+                    return uploadMedia(tourId, mediaFile, session);
                 default:
                     return jsonResponse(Response.Status.METHOD_NOT_ALLOWED,
                             mapOf("error", "Method not allowed"));
             }
+        }
+
+        // Chunked upload endpoints for large files (videos, etc.)
+        if ("upload-chunk".equals(subAction) && method == Method.POST) {
+            return uploadChunk(tourId, mediaFile, session);
+        }
+        if ("upload-complete".equals(subAction) && method == Method.POST) {
+            return completeChunkedUpload(tourId, session);
         }
 
         switch (method) {
@@ -290,53 +298,169 @@ public class GuideRouteHandler extends BaseHandler {
         return jsonResponse(Response.Status.OK, result);
     }
 
-    // ── Media: Upload file ─────────────────────────────────────────────
-    private Response uploadMedia(String tourId, IHTTPSession session) {
+    // ── Media: Upload file (small files only, <2MB) ────────────────────
+    // For large files, use /upload-chunk + /upload-complete instead.
+    private Response uploadMedia(String tourId, String filename, IHTTPSession session) {
         File tourDir = new File(MODULE_GUIDE_PATH, tourId);
         if (!tourDir.exists()) {
             tourDir.mkdirs();
         }
 
         try {
-            // Read content-length and raw bytes
             String contentLengthStr = session.getHeaders().get("content-length");
-            int contentLength = contentLengthStr != null ? Integer.parseInt(contentLengthStr) : 0;
+            long contentLength = contentLengthStr != null ? Long.parseLong(contentLengthStr) : 0;
             if (contentLength == 0) {
                 return jsonResponse(Response.Status.BAD_REQUEST, mapOf("error", "Empty upload"));
             }
 
-            // Parse multipart data
-            Map<String, String> files = new HashMap<>();
-            session.parseBody(files);
-
-            // NanoHTTPD stores uploaded files as temp files
-            String tempFilePath = files.get("file");
-            if (tempFilePath == null) {
-                // Try non-multipart: raw body with filename in header
-                tempFilePath = files.get("postData");
-            }
-
-            if (tempFilePath == null) {
-                return jsonResponse(Response.Status.BAD_REQUEST,
-                        mapOf("error", "No file found in upload. Use multipart with field name 'file'."));
-            }
-
-            // Get original filename from params
-            Map<String, List<String>> params = session.getParameters();
-            String filename = null;
-            if (params.containsKey("filename") && !params.get("filename").isEmpty()) {
-                filename = params.get("filename").get(0);
-            }
             if (filename == null || filename.isEmpty()) {
                 filename = "upload_" + System.currentTimeMillis();
             }
+            filename = sanitizeFilename(filename);
 
-            // Copy from temp to tour directory
-            File tempFile = new File(tempFilePath);
+            // For small files, read body from NanoHTTPD's parsed data
+            Map<String, String> files = new HashMap<>();
+            session.parseBody(files);
+            String bodyData = files.get("postData");
+            if (bodyData != null) {
+                File destFile = new File(tourDir, filename);
+                writeFileContent(destFile, bodyData);
+                Log.i(TAG, "Uploaded small media: " + destFile.getAbsolutePath());
+
+                Map<String, Object> result = new HashMap<>();
+                result.put("tour_id", tourId);
+                result.put("filename", filename);
+                result.put("size", destFile.length());
+                result.put("url", "/api/guide-routes/" + tourId + "/media/" + filename);
+                return jsonResponse(Response.Status.OK, result);
+            }
+            return jsonResponse(Response.Status.BAD_REQUEST, mapOf("error", "No data received"));
+        } catch (Exception e) {
+            Log.e(TAG, "Error uploading media", e);
+            return jsonResponse(Response.Status.INTERNAL_ERROR,
+                    mapOf("error", "Upload failed: " + e.getMessage()));
+        }
+    }
+
+    // ── Chunked Upload: Receive a single chunk ─────────────────────────
+    // POST /api/guide-routes/{tourId}/upload-chunk/{chunkIndex}
+    // Body: raw binary chunk (~512KB)
+    // Query params: filename, chunkIndex, totalChunks
+    private Response uploadChunk(String tourId, String chunkIndexStr, IHTTPSession session) {
+        File tourDir = new File(MODULE_GUIDE_PATH, tourId);
+        File chunksDir = new File(tourDir, ".chunks");
+        if (!chunksDir.exists()) {
+            chunksDir.mkdirs();
+        }
+
+        try {
+            // Get chunk index from URL path
+            int chunkIndex = 0;
+            if (chunkIndexStr != null) {
+                try { chunkIndex = Integer.parseInt(chunkIndexStr); } catch (Exception ignored) {}
+            }
+
+            // NanoHTTPD has already read the body — get it from parsed data
+            Map<String, String> files = new HashMap<>();
+            session.parseBody(files);
+
+            // The raw body is stored in a temp file by NanoHTTPD
+            String tempPath = files.get("postData");
+            if (tempPath == null) {
+                // Check for 'content' key too
+                for (Map.Entry<String, String> entry : files.entrySet()) {
+                    if (entry.getValue() != null && new File(entry.getValue()).exists()) {
+                        tempPath = entry.getValue();
+                        break;
+                    }
+                }
+            }
+
+            // Write chunk data to numbered chunk file
+            File chunkFile = new File(chunksDir, "chunk_" + String.format("%05d", chunkIndex));
+
+            if (tempPath != null && new File(tempPath).exists()) {
+                // NanoHTTPD stored it as a temp file — copy it
+                copyFile(new File(tempPath), chunkFile);
+            } else {
+                // Body might be inline string data (for very small chunks)
+                String body = getRequestBody(session);
+                if (body != null && !body.isEmpty()) {
+                    try (FileOutputStream fos = new FileOutputStream(chunkFile)) {
+                        fos.write(body.getBytes("ISO-8859-1")); // preserve binary
+                        fos.flush();
+                    }
+                } else {
+                    return jsonResponse(Response.Status.BAD_REQUEST,
+                            mapOf("error", "No chunk data received for chunk " + chunkIndex));
+                }
+            }
+
+            Log.i(TAG, "Received chunk " + chunkIndex + " (" + chunkFile.length() + " bytes) for tour " + tourId);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("chunkIndex", chunkIndex);
+            result.put("size", chunkFile.length());
+            result.put("status", "ok");
+            return jsonResponse(Response.Status.OK, result);
+        } catch (Exception e) {
+            Log.e(TAG, "Error receiving chunk", e);
+            return jsonResponse(Response.Status.INTERNAL_ERROR,
+                    mapOf("error", "Chunk upload failed: " + e.getMessage()));
+        }
+    }
+
+    // ── Chunked Upload: Merge all chunks into final file ───────────────
+    // POST /api/guide-routes/{tourId}/upload-complete
+    // Body JSON: { "filename": "video.mp4", "totalChunks": 10, "totalSize": 12345678 }
+    private Response completeChunkedUpload(String tourId, IHTTPSession session) {
+        File tourDir = new File(MODULE_GUIDE_PATH, tourId);
+        File chunksDir = new File(tourDir, ".chunks");
+
+        String body = getRequestBody(session);
+        if (body.isEmpty()) {
+            return jsonResponse(Response.Status.BAD_REQUEST, mapOf("error", "Missing body"));
+        }
+
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = gson.fromJson(body, Map.class);
+            String filename = (String) data.get("filename");
+            int totalChunks = data.get("totalChunks") != null
+                    ? ((Number) data.get("totalChunks")).intValue() : 0;
+
+            if (filename == null || filename.isEmpty()) {
+                return jsonResponse(Response.Status.BAD_REQUEST, mapOf("error", "Missing filename"));
+            }
+            filename = sanitizeFilename(filename);
+
+            // Merge all chunks into final file
             File destFile = new File(tourDir, filename);
-            copyFile(tempFile, destFile);
+            long totalSize = 0;
+            try (FileOutputStream fos = new FileOutputStream(destFile)) {
+                for (int i = 0; i < totalChunks; i++) {
+                    File chunkFile = new File(chunksDir, "chunk_" + String.format("%05d", i));
+                    if (!chunkFile.exists()) {
+                        return jsonResponse(Response.Status.BAD_REQUEST,
+                                mapOf("error", "Missing chunk " + i + " of " + totalChunks));
+                    }
+                    try (FileInputStream fis = new FileInputStream(chunkFile)) {
+                        byte[] buffer = new byte[8192];
+                        int read;
+                        while ((read = fis.read(buffer)) != -1) {
+                            fos.write(buffer, 0, read);
+                            totalSize += read;
+                        }
+                    }
+                }
+                fos.flush();
+            }
 
-            Log.i(TAG, "Uploaded media: " + destFile.getAbsolutePath() + " (" + destFile.length() + " bytes)");
+            // Clean up chunk files
+            deleteRecursive(chunksDir);
+
+            Log.i(TAG, "Merged " + totalChunks + " chunks into: " + destFile.getAbsolutePath()
+                    + " (" + totalSize + " bytes)");
 
             Map<String, Object> result = new HashMap<>();
             result.put("tour_id", tourId);
@@ -344,11 +468,29 @@ public class GuideRouteHandler extends BaseHandler {
             result.put("size", destFile.length());
             result.put("url", "/api/guide-routes/" + tourId + "/media/" + filename);
             result.put("path", destFile.getAbsolutePath());
+            result.put("chunks", totalChunks);
             return jsonResponse(Response.Status.OK, result);
         } catch (Exception e) {
-            Log.e(TAG, "Error uploading media", e);
-            return jsonResponse(Response.Status.INTERNAL_ERROR, mapOf("error", e.getMessage()));
+            Log.e(TAG, "Error merging chunks", e);
+            // Clean up on failure
+            if (chunksDir.exists()) deleteRecursive(chunksDir);
+            return jsonResponse(Response.Status.INTERNAL_ERROR,
+                    mapOf("error", "Merge failed: " + e.getMessage()));
         }
+    }
+
+    /** Sanitize a filename: URL-decode, strip special chars, truncate */
+    private String sanitizeFilename(String filename) {
+        try {
+            filename = java.net.URLDecoder.decode(filename, "UTF-8");
+        } catch (Exception ignored) {}
+        filename = filename.replaceAll("[^a-zA-Z0-9._\\-]", "_");
+        if (filename.length() > 100) {
+            int dotIdx = filename.lastIndexOf('.');
+            String ext = dotIdx > 0 ? filename.substring(dotIdx) : "";
+            filename = filename.substring(0, 80) + "_" + System.currentTimeMillis() + ext;
+        }
+        return filename;
     }
 
     // ── Media: Serve file ──────────────────────────────────────────────
