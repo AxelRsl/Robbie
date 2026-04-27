@@ -537,6 +537,19 @@ public class RobotActionHandler {
                     registerPersonDetection();
                     tryFollowVisiblePerson();
                     loadPlaceList();
+
+                    // Wire chassis controller on the TourExecutor singleton so tours
+                    // started from both voice AND the HTTP panel can stop/start face tracking
+                    TourExecutor.getInstance().setChassisController(new TourExecutor.ChassisController() {
+                        @Override
+                        public void stopFaceTracking() {
+                            RobotActionHandler.this.stopFaceTracking();
+                        }
+                        @Override
+                        public void startFaceTracking() {
+                            RobotActionHandler.this.startFaceTracking();
+                        }
+                    });
                 }
 
                 @Override
@@ -851,6 +864,18 @@ public class RobotActionHandler {
                         agentBridge.tts("Ya hay un tour en curso. Si quieres, puedo detenerlo primero.", 10000);
                     return;
                 }
+
+                // Wire chassis controller so TourExecutor can stop/start face tracking
+                executor.setChassisController(new TourExecutor.ChassisController() {
+                    @Override
+                    public void stopFaceTracking() {
+                        RobotActionHandler.this.stopFaceTracking();
+                    }
+                    @Override
+                    public void startFaceTracking() {
+                        RobotActionHandler.this.startFaceTracking();
+                    }
+                });
 
                 // Load published routes from DB
                 RobbieDatabase db = RobbieDatabase.getInstance(context);

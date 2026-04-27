@@ -8,6 +8,7 @@ import com.google.gson.GsonBuilder;
 import com.robbie.data.local.RobbieDatabase;
 
 import com.robbie.data.local.entity.ProductEntity;
+import com.robbie.moduleapp.lidd.RobotApp;
 import com.ainirobot.agent.AgentCore;
 
 import java.util.ArrayList;
@@ -36,6 +37,9 @@ public class RobbieApiServer extends NanoHTTPD {
     private RobotMapHandler robotMapHandler;
     private TourHandler tourHandler;
     private ConfigHandler configHandler;
+    private AnimationHandler animationHandler;
+    private ModuleDataHandler moduleDataHandler;
+    private GuideRouteHandler guideRouteHandler;
 
     public RobbieApiServer(Context context) {
         this(context, DEFAULT_PORT);
@@ -87,6 +91,39 @@ public class RobbieApiServer extends NanoHTTPD {
             robotMapHandler = new RobotMapHandler(db, gson);
             tourHandler = new TourHandler(db, gson);
             configHandler = new ConfigHandler(db, gson);
+            animationHandler = new AnimationHandler(db, gson);
+            moduleDataHandler = new ModuleDataHandler(db, gson);
+            guideRouteHandler = new GuideRouteHandler(db, gson);
+            configHandler.setOnPersonaChangedListener(persona -> {
+                // Cuando la persona cambia via el panel, actualizar AgentOS en tiempo real
+                try {
+                    RobotApp app = RobotApp.getInstance();
+                    if (app == null) return;
+
+                    String robotName = persona.get("robotName") != null ? persona.get("robotName").toString() : "";
+                    String robotIdentity = persona.get("robotIdentity") != null ? persona.get("robotIdentity").toString() : "";
+                    String enterpriseIntro = persona.get("enterpriseIntro") != null ? persona.get("enterpriseIntro").toString() : "";
+                    String additionalInfo = persona.get("additionalInfo") != null ? persona.get("additionalInfo").toString() : "";
+
+                    // Construir persona para el AgentOS
+                    StringBuilder personaStr = new StringBuilder();
+                    personaStr.append("Tu nombre es ").append(robotName).append(". ");
+                    if (!robotIdentity.isEmpty()) personaStr.append(robotIdentity).append(" ");
+                    if (!enterpriseIntro.isEmpty()) personaStr.append("Sobre la empresa: ").append(enterpriseIntro).append(" ");
+                    if (!additionalInfo.isEmpty()) personaStr.append(additionalInfo);
+
+                    // Construir objetivo
+                    String objective = "Ayudar a los clientes de forma amigable y profesional.";
+                    if (!robotIdentity.isEmpty()) {
+                        objective = robotIdentity;
+                    }
+
+                    app.updateAgentPersona(personaStr.toString().trim(), objective, robotName);
+                    Log.i(TAG, "Agent persona updated from panel: " + robotName);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not update agent persona after panel change", e);
+                }
+            });
         }
     }
 
@@ -151,6 +188,12 @@ public class RobbieApiServer extends NanoHTTPD {
                 return configHandler.handle(method, partsList, session);
             case "persona":
                 return configHandler.handlePersona(method, session);
+            case "animations":
+                return animationHandler.handle(method, partsList, session);
+            case "moduledata":
+                return moduleDataHandler.handle(method, partsList, session);
+            case "guide-routes":
+                return guideRouteHandler.handle(method, partsList, session);
             case "health":
                 return handleHealth();
             default:

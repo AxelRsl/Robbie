@@ -229,6 +229,81 @@ public class RobotApp extends Application implements ReactApplication {
         return appAgent;
     }
 
+    /**
+     * Actualiza la persona y objetivo del AppAgent dinamicamente.
+     * Llamado cuando el panel guarda una nueva configuracion de persona.
+     *
+     * Segun el SDK, setPersona/setObjective pueden llamarse en cualquier momento
+     * y el AgentOS persiste los cambios internamente en la LevelDB.
+     */
+    public void updateAgentPersona(String persona, String objective, String robotName) {
+        try {
+            if (appAgent != null) {
+                if (persona != null && !persona.isEmpty()) {
+                    appAgent.setPersona(persona);
+                    Log.i(TAG, "AppAgent persona updated: " + persona.substring(0, Math.min(persona.length(), 60)));
+                }
+                if (objective != null && !objective.isEmpty()) {
+                    appAgent.setObjective(objective);
+                    Log.i(TAG, "AppAgent objective updated");
+                }
+            }
+
+            // Tambien actualizar el contexto del agente con la info completa
+            StringBuilder info = new StringBuilder();
+            info.append("CONFIGURACION DE PERSONALIDAD ACTUALIZADA:\n");
+            if (robotName != null && !robotName.isEmpty()) {
+                info.append("Nombre del robot: ").append(robotName).append("\n");
+            }
+            if (persona != null && !persona.isEmpty()) {
+                info.append("Persona: ").append(persona).append("\n");
+            }
+            if (objective != null && !objective.isEmpty()) {
+                info.append("Objetivo: ").append(objective).append("\n");
+            }
+
+            // Incluir productos de Room DB en el contexto (uploadInterfaceInfo es overwrite)
+            try {
+                com.robbie.data.local.RobbieDatabase db = com.robbie.data.local.RobbieDatabase.getInstance(this);
+                List<com.robbie.data.local.entity.ProductEntity> dbProducts = db.productDao().getAllProductsSync();
+                if (dbProducts != null && !dbProducts.isEmpty()) {
+                    info.append("\nCATALOGO DE PRODUCTOS - ").append(dbProducts.size()).append(" productos:\n");
+                    int max = Math.min(dbProducts.size(), 30);
+                    for (int i = 0; i < max; i++) {
+                        com.robbie.data.local.entity.ProductEntity p = dbProducts.get(i);
+                        info.append("- ").append(p.getName());
+                        if (p.getPrice() > 0) info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
+                        info.append(" [").append(p.getCategory()).append("]\n");
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not include products in persona context", e);
+            }
+
+            AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
+            // Limpiar contexto de conversacion para que use la nueva persona
+            AgentCore.INSTANCE.clearContext();
+            Log.i(TAG, "Agent persona + context updated and conversation cleared");
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating agent persona", e);
+        }
+    }
+
+    /**
+     * Actualiza el estilo de conversacion del agente (setStyle).
+     * Recibe una cadena comma-separated como "natural,friendly,professional".
+     */
+    public void updateAgentStyle(String style) {
+        try {
+            if (appAgent != null && style != null && !style.isEmpty()) {
+                appAgent.setStyle(style);
+                Log.i(TAG, "AppAgent style updated: " + style);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error updating agent style", e);
+        }
+    }
+
     public static RobotApp getInstance() {
         return sInstance;
     }

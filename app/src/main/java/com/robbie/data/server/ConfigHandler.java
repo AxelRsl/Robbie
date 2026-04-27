@@ -21,8 +21,18 @@ public class ConfigHandler extends BaseHandler {
 
     private static final String TAG = "ConfigHandler";
 
+    public interface OnPersonaChangedListener {
+        void onPersonaChanged(Map<String, Object> persona);
+    }
+
+    private OnPersonaChangedListener personaChangedListener;
+
     public ConfigHandler(RobbieDatabase db, Gson gson) {
         super(db, gson);
+    }
+
+    public void setOnPersonaChangedListener(OnPersonaChangedListener listener) {
+        this.personaChangedListener = listener;
     }
 
     @Override
@@ -150,6 +160,16 @@ public class ConfigHandler extends BaseHandler {
 
         Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
         Map<String, Object> persona = gson.fromJson(body, mapType);
+
+        // Notificar al AgentOS del cambio de persona
+        if (personaChangedListener != null) {
+            try {
+                personaChangedListener.onPersonaChanged(persona);
+            } catch (Exception e) {
+                Log.w(TAG, "Error notifying persona change", e);
+            }
+        }
+
         return jsonResponse(Response.Status.OK, persona);
     }
 }

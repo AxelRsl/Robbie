@@ -30,6 +30,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
     private static final String TAG = "ProductsModule";
     private final RobbieConfigApiClient apiClient;
     private JSONArray cachedProducts = null;
+    private boolean cachedFromDb = false;
     
     public ProductsModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -140,26 +141,28 @@ public class ProductsModule extends ReactContextBaseJavaModule {
     public void refreshProducts(Promise promise) {
         Log.i(TAG, "refreshProducts llamado - limpiando cache");
         cachedProducts = null;
+        cachedFromDb = false;
         getProducts("", promise);
     }
 
     /**
      * Obtiene productos de la base de datos local.
-     * Prioridad: 1) Cache, 2) DB Local, 3) API remota, 4) Mock
+     * Prioridad: 1) DB Local (siempre verificar), 2) Cache de API, 3) API remota, 4) Mock (sin cache)
      */
     private JSONArray fetchProductsFromCloud() {
-        if (cachedProducts != null) {
-            Log.d(TAG, "[CACHE] Usando productos en cache (" + cachedProducts.length() + " items)");
-            return cachedProducts;
-        }
-
-        // PRIMERO: Intentar base de datos local
+        // SIEMPRE verificar Room DB primero - los productos pueden haber sido
+        // subidos via CSV desde el panel despues del ultimo cache
         try {
-            Log.i(TAG, "[DB LOCAL] Consultando base de datos local...");
+            Log.d(TAG, "[DB LOCAL] Consultando base de datos local...");
             RobbieDatabase db = RobbieDatabase.getInstance(getReactApplicationContext());
             List<ProductEntity> localProducts = db.productDao().getAllProductsBlocking();
             
             if (localProducts != null && !localProducts.isEmpty()) {
+                // Si ya tenemos cache de DB con la misma cantidad, reusar
+                if (cachedFromDb && cachedProducts != null && cachedProducts.length() == localProducts.size()) {
+                    Log.d(TAG, "[CACHE-DB] Usando cache de DB (" + cachedProducts.length() + " items)");
+                    return cachedProducts;
+                }
                 Log.i(TAG, "[DB LOCAL] Encontrados " + localProducts.size() + " productos en DB local");
                 JSONArray array = new JSONArray();
                 for (ProductEntity p : localProducts) {
@@ -184,6 +187,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
                     array.put(product);
                 }
                 cachedProducts = array;
+                cachedFromDb = true;
                 Log.i(TAG, "[DB LOCAL] Retornando " + array.length() + " productos de DB local");
                 return cachedProducts;
             } else {
@@ -191,6 +195,12 @@ public class ProductsModule extends ReactContextBaseJavaModule {
             }
         } catch (Exception e) {
             Log.e(TAG, "[DB LOCAL] Error consultando DB local", e);
+        }
+
+        // Si hay cache de API, usarla mientras DB esta vacia
+        if (cachedProducts != null && !cachedFromDb) {
+            Log.d(TAG, "[CACHE-API] Usando cache de API (" + cachedProducts.length() + " items)");
+            return cachedProducts;
         }
 
         // SEGUNDO: Intentar API remota
@@ -241,16 +251,16 @@ public class ProductsModule extends ReactContextBaseJavaModule {
             return result[0];
         }
         
-        // TERCERO: Fallback a datos mock
+        // TERCERO: Fallback a datos mock (NO cachear mock - permite que DB los reemplace)
         Log.w(TAG, "[FALLBACK] API no respondio o fallo, usando datos mock");
         try {
-            cachedProducts = getMockProductsArray();
-            Log.i(TAG, "[FALLBACK] Usando " + cachedProducts.length() + " productos mock");
+            JSONArray mockProducts = getMockProductsArray();
+            Log.i(TAG, "[FALLBACK] Usando " + mockProducts.length() + " productos mock (sin cache)");
+            return mockProducts;
         } catch (Exception e) {
             Log.e(TAG, "[FALLBACK] Error creando productos mock", e);
-            cachedProducts = new JSONArray();
+            return new JSONArray();
         }
-        return cachedProducts;
     }
 
     /**

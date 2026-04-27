@@ -8,10 +8,12 @@ import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
 
 import com.robbie.data.local.converter.StringListConverter;
+import com.robbie.data.local.dao.AnimationDao;
 import com.robbie.data.local.dao.ConfigDao;
 import com.robbie.data.local.dao.MapDao;
 import com.robbie.data.local.dao.ProductDao;
 import com.robbie.data.local.dao.TourStopDao;
+import com.robbie.data.local.entity.AnimationEntity;
 import com.robbie.data.local.entity.ConfigEntity;
 import com.robbie.data.local.entity.MapEntity;
 import com.robbie.data.local.entity.ProductEntity;
@@ -22,9 +24,10 @@ import com.robbie.data.local.entity.TourStopEntity;
         ProductEntity.class,
         MapEntity.class,
         TourStopEntity.class,
-        ConfigEntity.class
+        ConfigEntity.class,
+        AnimationEntity.class
     },
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(StringListConverter.class)
@@ -36,6 +39,7 @@ public abstract class RobbieDatabase extends RoomDatabase {
     public abstract MapDao mapDao();
     public abstract TourStopDao tourStopDao();
     public abstract ConfigDao configDao();
+    public abstract AnimationDao animationDao();
     
     private static volatile RobbieDatabase INSTANCE = null;
     
