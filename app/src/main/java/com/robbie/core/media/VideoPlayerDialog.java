@@ -29,15 +29,17 @@ public class VideoPlayerDialog extends Dialog {
 
     private final String videoPath;
     private final Runnable onCompleteCallback;
+    private final boolean looping;
     private SurfaceView surfaceView;
     private MediaPlayer mediaPlayer;
     private boolean completed = false;
     private boolean surfaceReady = false;
     private boolean playerPrepared = false;
 
-    public VideoPlayerDialog(Context context, String videoPath, Runnable onComplete) {
+    public VideoPlayerDialog(Context context, String videoPath, boolean looping, Runnable onComplete) {
         super(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         this.videoPath = videoPath;
+        this.looping = looping;
         this.onCompleteCallback = onComplete;
     }
 
@@ -111,8 +113,10 @@ public class VideoPlayerDialog extends Dialog {
             mediaPlayer.setDataSource(fis.getFD());
             fis.close();
 
+            mediaPlayer.setLooping(looping);
+
             mediaPlayer.setOnPreparedListener(mp -> {
-                Log.i(TAG, "MediaPlayer prepared, duration=" + mp.getDuration() + "ms");
+                Log.i(TAG, "MediaPlayer prepared, duration=" + mp.getDuration() + "ms, looping=" + looping);
                 playerPrepared = true;
                 if (surfaceReady) {
                     mp.setDisplay(surfaceView.getHolder());
@@ -122,8 +126,12 @@ public class VideoPlayerDialog extends Dialog {
             });
 
             mediaPlayer.setOnCompletionListener(mp -> {
-                Log.i(TAG, "Video playback completed");
-                finishWithCallback();
+                if (!looping) {
+                    Log.i(TAG, "Video playback completed (no loop)");
+                    finishWithCallback();
+                } else {
+                    Log.d(TAG, "Video looped");
+                }
             });
 
             mediaPlayer.setOnErrorListener((mp, what, extra) -> {

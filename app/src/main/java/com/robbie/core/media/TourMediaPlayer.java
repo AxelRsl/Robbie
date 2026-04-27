@@ -88,7 +88,8 @@ public class TourMediaPlayer {
         switch (mediaType) {
             case "video":
                 if (!videoUrl.isEmpty()) {
-                    playVideo(tourId, videoUrl);
+                    boolean videoLoop = getBool(stopData, "videoLoop", true);
+                    playVideo(tourId, videoUrl, videoLoop);
                 } else {
                     Log.w(TAG, "Video type but no videoUrl");
                     notifyComplete();
@@ -104,7 +105,7 @@ public class TourMediaPlayer {
     /**
      * Play video using a fullscreen Dialog within the current Activity.
      */
-    private void playVideo(String tourId, String videoUrl) {
+    private void playVideo(String tourId, String videoUrl, boolean loop) {
         String videoPath = resolveMediaPath(tourId, videoUrl);
         File videoFile = new File(videoPath);
 
@@ -120,7 +121,7 @@ public class TourMediaPlayer {
             return;
         }
 
-        Log.i(TAG, "Showing video dialog: " + videoPath + " (" + videoFile.length() + " bytes)");
+        Log.i(TAG, "Showing video dialog: " + videoPath + " (" + videoFile.length() + " bytes, loop=" + loop + ")");
         isPlaying = true;
 
         // Must run on UI thread
@@ -129,7 +130,7 @@ public class TourMediaPlayer {
                 // Dismiss any previous dialog
                 dismissVideoDialog();
 
-                videoDialog = new VideoPlayerDialog(currentActivity, videoPath, () -> {
+                videoDialog = new VideoPlayerDialog(currentActivity, videoPath, loop, () -> {
                     Log.i(TAG, "Video dialog completed callback");
                     isPlaying = false;
                     videoDialog = null;
@@ -243,5 +244,13 @@ public class TourMediaPlayer {
         if (map == null || !map.containsKey(key)) return def;
         Object v = map.get(key);
         return v != null ? v.toString() : def;
+    }
+
+    private static boolean getBool(Map<String, Object> map, String key, boolean def) {
+        if (map == null || !map.containsKey(key)) return def;
+        Object v = map.get(key);
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof String) return Boolean.parseBoolean((String) v);
+        return def;
     }
 }

@@ -411,20 +411,10 @@ public class TourExecutor {
             }
         }
 
-        // 3. Wait dwellTime then move to next stop
-        //    For media stops, extend dwell time to allow video/slideshow to play
-        long waitMs;
-        if (hasMedia && "video".equals(mediaType)) {
-            // For video, wait at least 120s (video will auto-close, but we need time)
-            waitMs = Math.max(120000, dwellTime * 1000L);
-            Log.d(TAG, "Dwelling at " + stopName + " for " + (waitMs/1000) + "s (extended for video)");
-        } else if (hasMedia && "image".equals(mediaType)) {
-            waitMs = Math.max(30000, dwellTime * 1000L);
-            Log.d(TAG, "Dwelling at " + stopName + " for " + (waitMs/1000) + "s (extended for images)");
-        } else {
-            waitMs = Math.max(5000, dwellTime * 1000L);
-            Log.d(TAG, "Dwelling at " + stopName + " for " + dwellTime + "s");
-        }
+        // 3. Wait configured dwellTime then move to next stop
+        //    Video will loop during this time and stop when dwell expires
+        long waitMs = Math.max(5000, dwellTime * 1000L);
+        Log.d(TAG, "Dwelling at " + stopName + " for " + dwellTime + "s");
 
         handler.postDelayed(() -> {
             // Stop any media still playing before moving on
