@@ -43,6 +43,7 @@ public class RobbieApiServer extends NanoHTTPD {
     private KnowledgeQAHandler knowledgeQAHandler;
     private KnowledgeLexiconHandler lexiconHandler;
     private KnowledgeDocumentHandler documentHandler;
+    private VoiceReportHandler voiceReportHandler;
 
     public RobbieApiServer(Context context) {
         this(context, DEFAULT_PORT);
@@ -100,6 +101,7 @@ public class RobbieApiServer extends NanoHTTPD {
             knowledgeQAHandler = new KnowledgeQAHandler(db, gson);
             lexiconHandler = new KnowledgeLexiconHandler(db, gson);
             documentHandler = new KnowledgeDocumentHandler(db, gson);
+            voiceReportHandler = new VoiceReportHandler(db, gson);
             configHandler.setOnPersonaChangedListener(persona -> {
                 // Cuando la persona cambia via el panel, actualizar AgentOS en tiempo real
                 try {
@@ -180,6 +182,8 @@ public class RobbieApiServer extends NanoHTTPD {
 
         String endpoint = partsList.get(1);
         switch (endpoint) {
+            case "voice-reports":
+                return voiceReportHandler.handle(method, partsList, session);
             case "products":
                 return productHandler.handle(method, partsList, session);
             case "maps":

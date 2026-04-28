@@ -41,6 +41,7 @@ public class RobbieAgentBridge implements IAgentBridge {
     private ActionDispatchCallback actionCallback;
     private TranscriptionCallback transcriptionCallback;
     private boolean ready = false;
+    private String lastUserQuestion = "";
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isListeningLight = false;
     private final Runnable restoreDefaultLight = () -> LedController.getInstance().restoreDefault();
@@ -82,6 +83,7 @@ public class RobbieAgentBridge implements IAgentBridge {
                     Log.d(TAG, "ASR final: " + text);
 
                     if (!text.isEmpty()) {
+                        lastUserQuestion = text; // Guardar para cuando el robot responda
                         Log.d(TAG, "Sending to query: " + text);
                         AgentCore.INSTANCE.query(text);
                         if (transcriptionCallback != null) transcriptionCallback.onASRFinal(text);
@@ -93,6 +95,15 @@ public class RobbieAgentBridge implements IAgentBridge {
                 public boolean onTTSResult(Transcription transcription) {
                     if (transcription.getFinal()) {
                         Log.d(TAG, "TTS final: " + transcription.getText());
+                        
+                        // Si hay una pregunta pendiente, registramos la interacción
+                        if (!lastUserQuestion.isEmpty()) {
+                            com.robbie.data.server.VoiceReportHandler.logInteraction(
+                                "Robbie", lastUserQuestion, transcription.getText()
+                            );
+                            lastUserQuestion = ""; // Reset
+                        }
+
                         mainHandler.removeCallbacks(restoreDefaultLight);
                         mainHandler.postDelayed(restoreDefaultLight, 1000);
                         AgentCore.INSTANCE.setEnableWakeFree(true);
