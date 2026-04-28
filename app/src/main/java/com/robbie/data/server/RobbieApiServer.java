@@ -40,6 +40,9 @@ public class RobbieApiServer extends NanoHTTPD {
     private AnimationHandler animationHandler;
     private ModuleDataHandler moduleDataHandler;
     private GuideRouteHandler guideRouteHandler;
+    private KnowledgeQAHandler knowledgeQAHandler;
+    private KnowledgeLexiconHandler lexiconHandler;
+    private KnowledgeDocumentHandler documentHandler;
 
     public RobbieApiServer(Context context) {
         this(context, DEFAULT_PORT);
@@ -94,6 +97,9 @@ public class RobbieApiServer extends NanoHTTPD {
             animationHandler = new AnimationHandler(db, gson);
             moduleDataHandler = new ModuleDataHandler(db, gson);
             guideRouteHandler = new GuideRouteHandler(db, gson);
+            knowledgeQAHandler = new KnowledgeQAHandler(db, gson);
+            lexiconHandler = new KnowledgeLexiconHandler(db, gson);
+            documentHandler = new KnowledgeDocumentHandler(db, gson);
             configHandler.setOnPersonaChangedListener(persona -> {
                 // Cuando la persona cambia via el panel, actualizar AgentOS en tiempo real
                 try {
@@ -194,6 +200,12 @@ public class RobbieApiServer extends NanoHTTPD {
                 return moduleDataHandler.handle(method, partsList, session);
             case "guide-routes":
                 return guideRouteHandler.handle(method, partsList, session);
+            case "knowledge":
+                return knowledgeQAHandler.handle(method, partsList, session);
+            case "lexicon":
+                return lexiconHandler.handle(method, partsList, session);
+            case "knowledge-documents":
+                return documentHandler.handle(method, partsList, session);
             case "health":
                 return handleHealth();
             default:
