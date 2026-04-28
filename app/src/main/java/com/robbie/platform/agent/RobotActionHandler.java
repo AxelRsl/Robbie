@@ -133,6 +133,12 @@ public class RobotActionHandler {
                 return handleStopTour();
             case "com.robbie.action.SWITCH_MODE":
                 return handleSwitchMode(params);
+            case "com.robbie.action.GO_TO_MENU":
+                return handleGoToMenu();
+            case "com.robbie.action.ENTER_RETAIL_MODE":
+                return handleEnterRetailMode();
+            case "com.robbie.action.ENTER_EXHIBITION_MODE":
+                return handleEnterExhibitionMode();
             default:
                 Log.w(TAG, "Unknown action: " + actionName);
                 return false;
@@ -243,7 +249,7 @@ public class RobotActionHandler {
                                         ProductEntity first = recommendedProducts.get(0);
                                         ttsResponse += " El primero es " + first.getName();
                                         if (first.getPrice() > 0) {
-                                            ttsResponse += " con precio de $" + String.format("%.0f", first.getPrice());
+                                            ttsResponse += " con precio de $" + String.format("%.2f", first.getPrice());
                                         }
                                     }
                                     if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
@@ -332,7 +338,7 @@ public class RobotActionHandler {
             ProductEntity first = products.get(0);
             ttsResponse += " El primero es " + first.getName();
             if (first.getPrice() > 0) {
-                ttsResponse += " con precio de $" + String.format("%.0f", first.getPrice());
+                ttsResponse += " con precio de $" + String.format("%.2f", first.getPrice());
             }
         }
         if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
@@ -402,9 +408,9 @@ public class RobotActionHandler {
                 tts.append(product.getName());
                 if (product.getDiscount() > 0) {
                     tts.append(" con ").append(product.getDiscount()).append("% de descuento, ");
-                    tts.append("precio final ").append(String.format("%.0f", product.getDiscountedPrice())).append(" pesos");
+                    tts.append("precio final ").append(String.format("%.2f", product.getDiscountedPrice())).append(" pesos");
                 } else {
-                    tts.append(" con precio de ").append(String.format("%.0f", product.getPrice())).append(" pesos");
+                    tts.append(" con precio de ").append(String.format("%.2f", product.getPrice())).append(" pesos");
                 }
                 if (!product.getDescription().isEmpty()) {
                     tts.append(". ").append(product.getDescription());
@@ -437,9 +443,9 @@ public class RobotActionHandler {
         String text = product.getName() + ". ";
         if (product.getDiscount() > 0) {
             text += "Tiene " + product.getDiscount() + " por ciento de descuento. ";
-            text += "Precio: " + String.format("%.0f", product.getDiscountedPrice()) + " pesos. ";
+            text += "Precio: " + String.format("%.2f", product.getDiscountedPrice()) + " pesos. ";
         } else {
-            text += "Precio: " + String.format("%.0f", product.getPrice()) + " pesos. ";
+            text += "Precio: " + String.format("%.2f", product.getPrice()) + " pesos. ";
         }
         if (!product.getDescription().isEmpty()) text += product.getDescription();
         if (agentBridge != null) agentBridge.tts(text, 30000);
@@ -659,6 +665,51 @@ public class RobotActionHandler {
             
             if (agentBridge != null) {
                 agentBridge.tts(ttsResponse, 10000);
+            }
+        });
+        return true;
+    }
+
+    private boolean handleGoToMenu() {
+        Log.d(TAG, "GO_TO_MENU");
+        
+        mainHandler.post(() -> {
+            if (resultCallback != null) {
+                resultCallback.onModeSwitch("menu");
+            }
+            
+            if (agentBridge != null) {
+                agentBridge.tts("Regresando al menu principal.", 8000);
+            }
+        });
+        return true;
+    }
+
+    private boolean handleEnterRetailMode() {
+        Log.d(TAG, "ENTER_RETAIL_MODE");
+        
+        mainHandler.post(() -> {
+            if (resultCallback != null) {
+                resultCallback.onModeSwitch("retail");
+            }
+            
+            if (agentBridge != null) {
+                agentBridge.tts("Entrando en modo retail. Te muestro todos los productos disponibles.", 10000);
+            }
+        });
+        return true;
+    }
+
+    private boolean handleEnterExhibitionMode() {
+        Log.d(TAG, "ENTER_EXHIBITION_MODE");
+        
+        mainHandler.post(() -> {
+            if (resultCallback != null) {
+                resultCallback.onModeSwitch("exhibition");
+            }
+            
+            if (agentBridge != null) {
+                agentBridge.tts("Entrando en modo promocion. Te muestro las ofertas y promociones especiales.", 10000);
             }
         });
         return true;

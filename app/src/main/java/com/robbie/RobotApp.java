@@ -178,7 +178,7 @@ public class RobotApp extends Application implements ReactApplication {
                     com.robbie.data.local.entity.ProductEntity p = dbProducts.get(i);
                     productsInfo.append("- ").append(p.getName());
                     if (p.getPrice() > 0) {
-                        productsInfo.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
+                        productsInfo.append(" ($").append(String.format("%.2f", p.getPrice())).append(")");
                     }
                     productsInfo.append(" [").append(p.getCategory()).append("]");
                     if (p.getBrand() != null && !p.getBrand().isEmpty()) {
@@ -199,7 +199,7 @@ public class RobotApp extends Application implements ReactApplication {
                     Product product = config.getProducts().get(i);
                     productsInfo.append("- ").append(product.getName());
                     if (product.getPrice() > 0) {
-                        productsInfo.append(" ($").append(String.format("%.0f", product.getPrice())).append(")");
+                        productsInfo.append(" ($").append(String.format("%.2f", product.getPrice())).append(")");
                     }
                     if (product.getCategory() != null) {
                         productsInfo.append(" [").append(product.getCategory()).append("]");

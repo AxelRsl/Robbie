@@ -41,8 +41,23 @@ export default function App() {
       }
     });
 
+    // Escuchar eventos de cambio de modo desde comandos de voz
+    const modeSwitchListener = eventEmitter.addListener('onModeSwitch', (event) => {
+      console.log('[App] Mode switch event:', event);
+      let targetMode = event.mode;
+      
+      // Mapear modos especiales
+      if (targetMode === 'exhibition') {
+        targetMode = 'promo'; // El modo exhibition se mapea a la pantalla de promociones
+      }
+      
+      console.log('[App] Switching to mode:', targetMode);
+      setCurrentMode(targetMode);
+    });
+
     return () => {
       navigationListener.remove();
+      modeSwitchListener.remove();
     };
   }, [setNavigation, setCurrentMode]);
 

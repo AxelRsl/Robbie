@@ -309,7 +309,7 @@ public class RobbieRetailActivity extends EveActivity {
                 
                 for (ProductEntity p : products) {
                     info.append("- ").append(p.getName())
-                        .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
+                        .append(" ($").append(String.format("%.2f", p.getPrice())).append(")")
                         .append(" [").append(p.getCategory()).append("]\n");
                 }
                 

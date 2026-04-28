@@ -449,5 +449,41 @@ public class RobbieAgentBridge implements IAgentBridge {
                 return true;
             }
         ));
+
+        // Action: Regresar al menu principal
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.GO_TO_MENU",
+            "Ir al menu",
+            "Navega a la pagina del menu principal. Usa este action cuando el usuario diga 'regresa a menu', 'volver al menu', 'ir al menu principal' o similar.",
+            Arrays.asList(),
+            (action, params) -> {
+                dispatchAction("com.robbie.action.GO_TO_MENU", action, params);
+                return true;
+            }
+        ));
+
+        // Action: Entrar en modo retail con productos
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.ENTER_RETAIL_MODE",
+            "Entrar en modo retail",
+            "Activa el modo retail y muestra todos los productos disponibles. Usa este action cuando el usuario diga 'entra en modo retail', 'modo tienda', 'mostrar productos' o similar.",
+            Arrays.asList(),
+            (action, params) -> {
+                dispatchAction("com.robbie.action.ENTER_RETAIL_MODE", action, params);
+                return true;
+            }
+        ));
+
+        // Action: Entrar en modo promocion/exhibicion
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.ENTER_EXHIBITION_MODE",
+            "Entrar en modo exhibicion",
+            "Activa el modo exhibicion/promocion y navega a la pagina de promociones. Usa este action cuando el usuario diga 'entra en modo promocion', 'modo exhibicion', 'mostrar promociones' o similar.",
+            Arrays.asList(),
+            (action, params) -> {
+                dispatchAction("com.robbie.action.ENTER_EXHIBITION_MODE", action, params);
+                return true;
+            }
+        ));
     }
 }
