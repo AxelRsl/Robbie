@@ -269,9 +269,7 @@ public class RobotApp extends Application implements ReactApplication {
                 List<com.robbie.data.local.entity.ProductEntity> dbProducts = db.productDao().getAllProductsSync();
                 if (dbProducts != null && !dbProducts.isEmpty()) {
                     info.append("\nCATALOGO DE PRODUCTOS - ").append(dbProducts.size()).append(" productos:\n");
-                    int max = Math.min(dbProducts.size(), 30);
-                    for (int i = 0; i < max; i++) {
-                        com.robbie.data.local.entity.ProductEntity p = dbProducts.get(i);
+                    for (com.robbie.data.local.entity.ProductEntity p : dbProducts) {
                         info.append("- ").append(p.getName());
                         if (p.getPrice() > 0) info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
                         info.append(" [").append(p.getCategory()).append("]\n");

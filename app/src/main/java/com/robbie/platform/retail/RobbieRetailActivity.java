@@ -292,16 +292,10 @@ public class RobbieRetailActivity extends EveActivity {
                 
                 StringBuilder info = new StringBuilder("Catalogo GNC - " + products.size() + " productos:\n");
                 
-                int max = Math.min(products.size(), 20);
-                for (int i = 0; i < max; i++) {
-                    ProductEntity p = products.get(i);
+                for (ProductEntity p : products) {
                     info.append("- ").append(p.getName())
                         .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
                         .append(" [").append(p.getCategory()).append("]\n");
-                }
-                
-                if (products.size() > max) {
-                    info.append("... y ").append(products.size() - max).append(" productos mas\n");
                 }
                 
                 AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());

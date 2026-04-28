@@ -73,9 +73,7 @@ public class RobbieApiServer extends NanoHTTPD {
                     if (products != null && !products.isEmpty()) {
                         StringBuilder info = new StringBuilder();
                         info.append("CATALOGO DE PRODUCTOS ACTUALIZADO - ").append(products.size()).append(" productos:\n");
-                        int max = Math.min(products.size(), 30);
-                        for (int i = 0; i < max; i++) {
-                            ProductEntity p = products.get(i);
+                        for (ProductEntity p : products) {
                             info.append("- ").append(p.getName());
                             if (p.getPrice() > 0)
                                 info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
