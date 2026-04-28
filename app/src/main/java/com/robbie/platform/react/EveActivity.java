@@ -76,7 +76,6 @@ public class EveActivity extends ReactActivity {
 
         actionHandler.uploadCatalogInfoToAgent();
         agentBridge.onActivityStart();
-        LedController.getInstance().restoreDefault();
         actionHandler.startFaceTracking();
         agentBridge.speakWelcome();
     }
@@ -138,8 +137,8 @@ public class EveActivity extends ReactActivity {
             }
 
             @Override
-            public void onProductRecommendation(String explanation, List<String> productIds) {
-                emitProductRecommendationEvent(explanation, productIds);
+            public void onProductRecommendation(String explanation, List<Product> products) {
+                emitProductRecommendationEvent(explanation, products);
             }
 
             @Override
@@ -263,7 +262,9 @@ public class EveActivity extends ReactActivity {
                 productMap.putInt("discount", product.getDiscount());
                 productMap.putString("imageUrl", product.getImage());
                 productMap.putString("description", product.getDescription());
-                productMap.putBoolean("inStock", product.getInStock());
+                boolean inStockValue = product.getInStock();
+                Log.d(TAG, "Sending product " + product.getName() + " inStock=" + inStockValue);
+                productMap.putBoolean("inStock", inStockValue);
                 double finalPrice = product.getPrice() * (1 - product.getDiscount() / 100.0);
                 productMap.putDouble("finalPrice", finalPrice);
                 productsArray.pushMap(productMap);
@@ -277,13 +278,32 @@ public class EveActivity extends ReactActivity {
         }
     }
 
-    private void emitProductRecommendationEvent(String explanation, List<String> productIds) {
+    private void emitProductRecommendationEvent(String explanation, List<Product> products) {
         ReactContext ctx = getReactCtx();
         if (ctx == null) return;
         try {
             WritableMap params = Arguments.createMap();
             params.putString("explanation", explanation);
-            params.putString("productIds", String.join(",", productIds));
+            
+            // Enviar array completo de productos con flag aiRecommended
+            WritableArray productsArray = Arguments.createArray();
+            for (Product product : products) {
+                WritableMap productMap = Arguments.createMap();
+                productMap.putString("id", product.getId());
+                productMap.putString("name", product.getName());
+                productMap.putString("category", product.getCategory());
+                productMap.putString("subcategory", product.getSubcategory());
+                productMap.putDouble("price", product.getPrice());
+                productMap.putInt("discount", product.getDiscount());
+                productMap.putString("imageUrl", product.getImage());
+                productMap.putString("description", product.getDescription());
+                productMap.putBoolean("inStock", product.isInStock());
+                productMap.putBoolean("aiRecommended", product.isAiRecommended());
+                productMap.putString("brand", product.getBrand());
+                productsArray.pushMap(productMap);
+            }
+            params.putArray("products", productsArray);
+            
             ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
                 .emit("onProductRecommendation", params);
         } catch (Exception e) {

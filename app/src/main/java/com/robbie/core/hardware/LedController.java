@@ -5,6 +5,8 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.ainirobot.coreservice.client.RobotApi;
+import com.ainirobot.coreservice.client.Definition;
+import com.ainirobot.coreservice.client.listener.CommandListener;
 
 import org.json.JSONObject;
 
@@ -27,12 +29,31 @@ public class LedController {
     private static final String TAG = "LedController";
     private static volatile LedController sInstance;
 
-    private static final int IKALP_PRIMARY = 0xE4027C;
+// private static final int IKALP_PRIMARY = 0xE4027C;
+    private static final int IKALP_PRIMARY = 0xFFFF00; // Color por defecto (Amarillo)
     private static final int COLOR_LISTENING = 0xE4027C;
     private static final int COLOR_SPEAKING = 0x00BFA5;
     private static final int COLOR_PERSON_DETECTED = 0x4CAF50;
     private static final int COLOR_ERROR = 0xF44336;
     private static final int COLOR_IDLE = 0x455A64;
+
+    // Constantes de efectos LED según documentación OrionStar
+    public static final class LedEffects {
+        public static final int ZCB2UARTLED_GREENBREATH = 0xDE10;  // Green breathing effect
+        public static final int ZCB2UARTLED_BLUEBREATH = 0xDE11;   // Blue breathing effect
+        public static final int ZCB2UARTLED_ORANGEBREATH = 0xDE12; // Orange breathing effect
+        public static final int ZCB2UARTLED_YELLOWBREATH = 0xDE13; // Yellow breathing effect
+        public static final int ZCB2UARTLED_BLUENORMAL = 0xDE14;   // Blue normal effect
+        public static final int ZCB2UARTLED_REDNORMAL = 0xDE15;    // Red normal effect
+        public static final int ZCB2UARTLED_ORANGENORMAL = 0xDE16; // Orange normal effect
+        public static final int ZCB2UARTLED_YELLOWNORMAL = 0xDE17; // Yellow normal effect
+        public static final int ZCB2UARTLED_GREENNORMAL = 0xDE18;  // Green normal effect
+        public static final int ZCB2UARTLED_TURNRIGHT = 0xDE19;    // Right turn effect
+        public static final int ZCB2UARTLED_TURNLEFT = 0xDE20;     // Left turn effect
+        public static final int ZCB2UARTLED_REGFLASH = 0xDE21;     // Red flashing effect
+        public static final int ZCB2UARTLED_YELLOWFLASH = 0xDE22;  // Yellow flashing effect
+        public static final int ZCB2UARTLED_ALLOFF = 0xDE00;       // Turn off all ZCB effects
+    }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private int requestId = 3001;
@@ -204,6 +225,123 @@ public class LedController {
         this.brightness = Math.max(0, Math.min(100, brightness));
     }
 
+    /**
+     * Aplica un efecto LED predefinido usando setLight (único comando soportado)
+     * Mapea efectos ZCB2UARTLED a colores RGB equivalentes
+     */
+    public void setPredefinedEffect(int effect) {
+        try {
+            RobotApi api = RobotApi.getInstance();
+            if (api == null) {
+                Log.w(TAG, "RobotApi is null, cannot apply predefined LED effect");
+                return;
+            }
+
+            Log.d(TAG, "Applying predefined LED effect: 0x" + Integer.toHexString(effect));
+            
+            // Mapear efectos predefinidos a colores RGB
+            int color = mapEffectToColor(effect);
+            
+            // Aplicar usando setLight (único comando soportado por hardware)
+            applyColor(color, LedZone.ALL);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error applying predefined LED effect", e);
+        }
+    }
+    
+    /**
+     * Mapea efectos predefinidos ZCB2UARTLED a colores RGB equivalentes
+     */
+    private int mapEffectToColor(int effect) {
+        switch (effect) {
+            case LedEffects.ZCB2UARTLED_GREENBREATH:
+            case LedEffects.ZCB2UARTLED_GREENNORMAL:
+                return 0x00FF00; // Verde
+            case LedEffects.ZCB2UARTLED_BLUEBREATH:
+            case LedEffects.ZCB2UARTLED_BLUENORMAL:
+                return 0x0000FF; // Azul
+            case LedEffects.ZCB2UARTLED_ORANGEBREATH:
+            case LedEffects.ZCB2UARTLED_ORANGENORMAL:
+                return 0xFFA500; // Naranja
+            case LedEffects.ZCB2UARTLED_YELLOWBREATH:
+            case LedEffects.ZCB2UARTLED_YELLOWNORMAL:
+            case LedEffects.ZCB2UARTLED_YELLOWFLASH:
+                return 0xFFFF00; // Amarillo
+            case LedEffects.ZCB2UARTLED_REDNORMAL:
+            case LedEffects.ZCB2UARTLED_REGFLASH:
+                return 0xFF0000; // Rojo
+            case LedEffects.ZCB2UARTLED_ALLOFF:
+                return 0x000000; // Negro (apagado)
+            case LedEffects.ZCB2UARTLED_TURNRIGHT:
+            case LedEffects.ZCB2UARTLED_TURNLEFT:
+                return 0xFFFFFF; // Blanco (giro)
+            default:
+                return IKALP_PRIMARY; // Color por defecto
+        }
+    }
+
+    /**
+     * Activa efecto de respiración verde
+     */
+    public void setGreenBreathingEffect() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_GREENBREATH);
+    }
+
+    /**
+     * Activa efecto de respiración azul
+     */
+    public void setBlueBreathingEffect() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_BLUEBREATH);
+    }
+
+    /**
+     * Activa efecto de respiración naranja
+     */
+    public void setOrangeBreathingEffect() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_ORANGEBREATH);
+    }
+
+    /**
+     * Activa efecto normal rojo
+     */
+    public void setRedNormalEffect() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_REDNORMAL);
+    }
+
+    /**
+     * Activa efecto de giro a la derecha
+     */
+    public void setTurnRightEffect() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_TURNRIGHT);
+    }
+
+    /**
+     * Activa efecto de giro a la izquierda
+     */
+    public void setTurnLeftEffect() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_TURNLEFT);
+    }
+
+    /**
+     * Apaga todos los efectos LED
+     */
+    public void turnOffAllEffects() {
+        setPredefinedEffect(LedEffects.ZCB2UARTLED_ALLOFF);
+    }
+
+    /**
+     * Verifica las capacidades LED del robot
+     * Nota: Hardware solo soporta setLight, no ProZcbLed
+     */
+    public Map<String, Boolean> getLedCapabilities() {
+        Map<String, Boolean> capabilities = new HashMap<>();
+        capabilities.put("hasProZcbLed", false); // Hardware no soporta ProZcbLed
+        capabilities.put("hasClavicleLight", false); // Hardware no soporta clavícula
+        Log.d(TAG, "LED Capabilities: Using only setLight (ProZcbLed not supported)");
+        return capabilities;
+    }
+
     public Map<String, Object> getStatus() {
         Map<String, Object> status = new HashMap<>();
         status.put("currentColor", String.format("#%06X", currentColor));
@@ -330,42 +468,149 @@ public class LedController {
     private void applyColor(int color, LedZone zone) {
         try {
             RobotApi api = RobotApi.getInstance();
-            if (api == null) return;
+            if (api == null) {
+                Log.w(TAG, "RobotApi is null, cannot apply LED color");
+                return;
+            }
 
+            // Log del color original solicitado
+            int origR = (color >> 16) & 0xFF;
+            int origG = (color >> 8) & 0xFF;
+            int origB = color & 0xFF;
+            String origHex = String.format("%06X", color);
+            Log.d(TAG, "=== COLOR SOLICITADO ===");
+            Log.d(TAG, "  Original: 0x" + origHex + " (R:" + origR + " G:" + origG + " B:" + origB + ")");
+
+            // Ajustar por brillo
             float bFactor = brightness / 100.0f;
             int r = (int) (((color >> 16) & 0xFF) * bFactor);
             int g = (int) (((color >> 8) & 0xFF) * bFactor);
             int b = (int) ((color & 0xFF) * bFactor);
             int adjusted = (r << 16) | (g << 8) | b;
+            
+            // Convertir color a formato hexadecimal string para la API
+            String colorHex = String.format("%06X", adjusted);
+            Log.d(TAG, "  Brillo: " + brightness + "% (factor: " + bFactor + ")");
+            Log.d(TAG, "  Ajustado: 0x" + colorHex + " (R:" + r + " G:" + g + " B:" + b + ")");
+            Log.d(TAG, "  Zona: " + zone.name());
+            Log.d(TAG, "======================");
 
             switch (zone) {
                 case HEAD:
-                    JSONObject params = new JSONObject();
-                    params.put("type", 1);
-                    params.put("target", 0);
-                    params.put("color_rgb_value", adjusted);
-                    api.setLight(requestId++, params.toString(), null);
+                    applyHeadLedEffect(api, adjusted, colorHex);
                     break;
                 case CLAVICLE:
-                    api.setClavicleLedEffect(requestId++, adjusted, null);
+                    applyClavicleLedEffect(api, adjusted);
                     break;
                 case BOTTOM:
-                    api.setBottomLedEffect(requestId++, adjusted, null);
+                    applyBottomLedEffect(api, adjusted);
                     break;
                 case ALL:
                 default:
-                    JSONObject allParams = new JSONObject();
-                    allParams.put("type", 1);
-                    allParams.put("target", 0);
-                    allParams.put("color_rgb_value", adjusted);
-                    api.setLight(requestId++, allParams.toString(), null);
-                    api.setClavicleLedEffect(requestId++, adjusted, null);
-                    api.setBottomLedEffect(requestId++, adjusted, null);
+                    // Para ALL, usar target=-1 para aplicar a todas las zonas de una vez
+                    applyAllZonesLedEffect(api, adjusted, colorHex);
                     break;
             }
             notifyColorChanged(adjusted, zone);
         } catch (Exception e) {
             Log.e(TAG, "Error applying LED color", e);
+        }
+    }
+
+    /**
+     * Aplica efecto LED a la cabeza usando setLight
+     */
+    private void applyHeadLedEffect(RobotApi api, int color, String colorHex) {
+        try {
+            // Usar setLight para cabeza
+            JSONObject params = new JSONObject();
+            params.put(Definition.JSON_LAMB_TYPE, 0);              // type: Fill 0
+            params.put(Definition.JSON_LAMB_TARGET, 0);            // target: 0 = HEAD
+            params.put(Definition.JSON_LAMB_RGB_START, colorHex);  // Color inicial
+            params.put(Definition.JSON_LAMB_RGB_END, colorHex);    // Color final
+            params.put(Definition.JSON_LAMB_START_TIME, 1000);     // Duración color inicial (ms)
+            params.put(Definition.JSON_LAMB_END_TIME, 1000);       // Duración color final (ms)
+            params.put(Definition.JSON_LAMB_REPEAT, 1);            // Repeticiones
+            params.put(Definition.JSON_LAMB_ON_TIME, 500);         // Tiempo gradiente (ms)
+            params.put(Definition.JSON_LAMB_RGB_FREEZE, colorHex); // Color final transición
+            
+            Log.d(TAG, ">>> HEAD: setLight params: " + params.toString());
+            int result = api.setLight(requestId++, params.toString(), null);
+            Log.d(TAG, ">>> HEAD RESULT: " + result);
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting head LED effect", e);
+        }
+    }
+
+    /**
+     * Aplica efecto LED a las clavículas - NO SOPORTADO por hardware
+     */
+    private void applyClavicleLedEffect(RobotApi api, int color) {
+        Log.w(TAG, ">>> CLAVICLE LED: Not supported by hardware - skipping");
+        // El hardware reporta "LED effect is not supported" para clavícula
+        // No intentar aplicar color a esta zona
+    }
+
+    /**
+     * Aplica efecto LED a la base/chasis - NO SOPORTADO por hardware
+     */
+    private void applyBottomLedEffect(RobotApi api, int color) {
+        Log.w(TAG, ">>> BOTTOM LED: Not supported by hardware - skipping");
+        // El hardware reporta "LED effect is not supported" para base
+        // No intentar aplicar color a esta zona
+    }
+
+    /**
+     * Aplica efecto LED a todas las zonas usando setLight (único comando soportado)
+     */
+    private void applyAllZonesLedEffect(RobotApi api, int color, String colorHex) {
+        try {
+            // Primero detener cualquier efecto en ejecución
+            stopEffect();
+            
+            // Usar solo setLight que es el comando soportado (cmd_can_lamp_anim)
+            JSONObject params = new JSONObject();
+            params.put(Definition.JSON_LAMB_TYPE, 0);              // type: Fill 0
+            params.put(Definition.JSON_LAMB_TARGET, -1);           // target: -1 = ALL
+            params.put(Definition.JSON_LAMB_RGB_START, colorHex);  // Color inicial
+            params.put(Definition.JSON_LAMB_RGB_END, colorHex);    // Color final
+            params.put(Definition.JSON_LAMB_START_TIME, 1000);     // Duración color inicial (ms)
+            params.put(Definition.JSON_LAMB_END_TIME, 1000);       // Duración color final (ms)
+            params.put(Definition.JSON_LAMB_REPEAT, 1);            // Repeticiones
+            params.put(Definition.JSON_LAMB_ON_TIME, 500);         // Tiempo gradiente (ms)
+            params.put(Definition.JSON_LAMB_RGB_FREEZE, colorHex); // Color final transición
+            
+            Log.d(TAG, ">>> ALL ZONES: setLight params: " + params.toString());
+            int result = api.setLight(requestId++, params.toString(), null);
+            Log.d(TAG, ">>> ALL ZONES RESULT: " + result);
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting all zones LED effect", e);
+        }
+    }
+
+    /**
+     * Obtiene el efecto predefinido más cercano al color solicitado
+     */
+    private int getClosestPredefinedEffect(int color) {
+        // Extraer componentes RGB
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        
+        // Determinar color dominante y retornar efecto apropiado
+        if (r > g && r > b) {
+            return LedEffects.ZCB2UARTLED_REDNORMAL;
+        } else if (g > r && g > b) {
+            return LedEffects.ZCB2UARTLED_GREENNORMAL;
+        } else if (b > r && b > g) {
+            return LedEffects.ZCB2UARTLED_BLUENORMAL;
+        } else if (r > 200 && g > 100 && b < 50) {
+            return LedEffects.ZCB2UARTLED_ORANGENORMAL;
+        } else if (r > 200 && g > 200 && b < 100) {
+            return LedEffects.ZCB2UARTLED_YELLOWNORMAL;
+        } else {
+            return LedEffects.ZCB2UARTLED_BLUENORMAL; // Default
         }
     }
 

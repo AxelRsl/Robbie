@@ -22,6 +22,8 @@ const { ProductSearchModule } = NativeModules;
 export const RetailScreen: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [currentSearchQuery, setCurrentSearchQuery] = useState<string>('');
+  const [searchCategory, setSearchCategory] = useState<string>('');
   
   const { 
     retailTemplate, 
@@ -48,8 +50,45 @@ export const RetailScreen: React.FC = () => {
       if (event.products && Array.isArray(event.products)) {
         setSearchResults(event.products);
         setStoreSearchResults(event.products);
+        
+        // Actualizar información de búsqueda
+        if (event.query) {
+          setCurrentSearchQuery(event.query);
+        }
+        if (event.category) {
+          setSearchCategory(event.category);
+        } else if (event.products.length > 0) {
+          // Inferir categoría del primer producto si no se proporciona
+          setSearchCategory(event.products[0].category || '');
+        }
+        
         if (event.recommendation) {
           setSearchRecommendation(event.recommendation);
+        }
+      }
+    });
+
+    // Escuchar eventos de recomendación desde EveActivity (LLM)
+    const productRecommendationListener = DeviceEventEmitter.addListener('onProductRecommendation', (event) => {
+      console.log('[RetailScreen] Product recommendation event from LLM:', event);
+      if (event.products && Array.isArray(event.products)) {
+        // Mostrar todos los productos con flag aiRecommended
+        setSearchResults(event.products);
+        setStoreSearchResults(event.products);
+        
+        // Actualizar información de recomendación
+        setCurrentSearchQuery('Recomendaciones AI');
+        if (event.products.length > 0) {
+          // Obtener categorías de productos recomendados
+          const categories = [...new Set(event.products
+            .filter(p => p.aiRecommended)
+            .map(p => p.category)
+            .filter(Boolean))];
+          setSearchCategory(categories.join(', ') || 'Varios');
+        }
+        
+        if (event.explanation) {
+          setSearchRecommendation(event.explanation);
         }
       }
     });
@@ -65,6 +104,7 @@ export const RetailScreen: React.FC = () => {
 
     return () => {
       productSearchListener.remove();
+      productRecommendationListener.remove();
       modeSwitchListener.remove();
     };
   }, []);
@@ -81,6 +121,13 @@ export const RetailScreen: React.FC = () => {
         setSearchResults(results);
         setStoreSearchResults(results);
         
+        // Actualizar información de búsqueda
+        setCurrentSearchQuery(query);
+        if (results.length > 0) {
+          const categories = [...new Set(results.map((p: any) => p.category).filter(Boolean))];
+          setSearchCategory(categories.join(', ') || '');
+        }
+        
         await RobotBridge.say(`Encontré ${results.length} productos relacionados con ${query}`);
       } else {
         // Fallback a CloudApi si el módulo no está disponible
@@ -88,6 +135,13 @@ export const RetailScreen: React.FC = () => {
         console.log('[RetailScreen] Resultados de busqueda CloudApi:', results.length);
         setSearchResults(results);
         setStoreSearchResults(results);
+        
+        // Actualizar información de búsqueda
+        setCurrentSearchQuery(query);
+        if (results.length > 0) {
+          const categories = [...new Set(results.map((p: any) => p.category).filter(Boolean))];
+          setSearchCategory(categories.join(', ') || '');
+        }
         
         await RobotBridge.say(`Encontré ${results.length} productos relacionados con ${query}`);
       }
@@ -155,6 +209,36 @@ export const RetailScreen: React.FC = () => {
           onVoiceSearch={uiConfig.showMicButton ? handleVoiceSearch : undefined}
           placeholder="Buscar productos con voz o texto..."
         />
+      )}
+
+      {/* Información de búsqueda/categoría */}
+      {(currentSearchQuery || searchCategory) && (
+        <View style={styles.searchInfoContainer}>
+          <View style={styles.searchInfoContent}>
+            {currentSearchQuery && (
+              <Text style={styles.searchQueryText}>
+                Búsqueda: <Text style={styles.searchQueryValue}>{currentSearchQuery}</Text>
+              </Text>
+            )}
+            {searchCategory && (
+              <Text style={styles.searchCategoryText}>
+                Categoría: <Text style={styles.searchCategoryValue}>{searchCategory}</Text>
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity 
+            style={styles.clearSearchInfo}
+            onPress={() => {
+              setCurrentSearchQuery('');
+              setSearchCategory('');
+              setSearchResults([]);
+              setStoreSearchResults([]);
+              setSearchRecommendation('');
+            }}
+          >
+            <Text style={styles.clearSearchInfoText}>✕</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {isSearching && (
@@ -304,5 +388,44 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 8,
     paddingHorizontal: 4,
+  },
+  searchInfoContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#E8F5E9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#C8E6C9',
+  },
+  searchInfoContent: {
+    flex: 1,
+  },
+  searchQueryText: {
+    fontSize: 12,
+    color: '#2E7D32',
+    marginBottom: 2,
+  },
+  searchQueryValue: {
+    fontWeight: '600',
+    color: '#1B5E20',
+  },
+  searchCategoryText: {
+    fontSize: 12,
+    color: '#2E7D32',
+  },
+  searchCategoryValue: {
+    fontWeight: '600',
+    color: '#1B5E20',
+  },
+  clearSearchInfo: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  clearSearchInfoText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: 'bold',
   },
 });

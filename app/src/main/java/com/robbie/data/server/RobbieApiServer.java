@@ -8,7 +8,7 @@ import com.google.gson.GsonBuilder;
 import com.robbie.data.local.RobbieDatabase;
 
 import com.robbie.data.local.entity.ProductEntity;
-import com.robbie.moduleapp.lidd.RobotApp;
+import com.robbie.RobotApp;
 import com.ainirobot.agent.AgentCore;
 
 import java.util.ArrayList;

@@ -76,20 +76,25 @@ public class ProductsModule extends ReactContextBaseJavaModule {
                 JSONArray products = fetchProductsFromCloud();
                 Log.d(TAG, "Buscando en " + products.length() + " productos");
                 JSONArray results = new JSONArray();
-                String lowerQuery = query.toLowerCase();
+                String lowerQuery = normalizeAccents(query.toLowerCase());
                 
                 for (int i = 0; i < products.length(); i++) {
                     JSONObject product = products.getJSONObject(i);
-                    String name = product.optString("name", "").toLowerCase();
-                    String description = product.optString("description", "").toLowerCase();
+                    String name = normalizeAccents(product.optString("name", "").toLowerCase());
+                    String description = normalizeAccents(product.optString("description", "").toLowerCase());
+                    String category = normalizeAccents(product.optString("category", "").toLowerCase());
+                    String brand = normalizeAccents(product.optString("brand", "").toLowerCase());
                     
-                    boolean matches = name.contains(lowerQuery) || description.contains(lowerQuery);
+                    boolean matches = name.contains(lowerQuery) || 
+                                     description.contains(lowerQuery) ||
+                                     category.contains(lowerQuery) ||
+                                     brand.contains(lowerQuery);
                     
                     if (!matches) {
                         JSONArray tags = product.optJSONArray("tags");
                         if (tags != null) {
                             for (int j = 0; j < tags.length(); j++) {
-                                if (tags.getString(j).toLowerCase().contains(lowerQuery)) {
+                                if (normalizeAccents(tags.getString(j).toLowerCase()).contains(lowerQuery)) {
                                     matches = true;
                                     break;
                                 }
@@ -177,7 +182,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
                     product.put("subcategory", p.getSubcategory());
                     product.put("brand", p.getBrand());
                     product.put("sku", p.getSku());
-                    product.put("stock", p.getInStock() ? 1 : 0);
+                    product.put("inStock", p.getInStock());
                     product.put("discount", p.getDiscount());
                     JSONArray tagsArray = new JSONArray();
                     for (String tag : p.getTags()) {
@@ -331,6 +336,7 @@ public class ProductsModule extends ReactContextBaseJavaModule {
         product.put("currency", "MXN");
         product.put("imageUrl", imageUrl);
         product.put("category", category);
+        product.put("inStock", true);
         product.put("stock", stock);
         JSONArray tagsArray = new JSONArray();
         for (String tag : tags) {
@@ -338,5 +344,11 @@ public class ProductsModule extends ReactContextBaseJavaModule {
         }
         product.put("tags", tagsArray);
         return product;
+    }
+
+    private String normalizeAccents(String text) {
+        if (text == null) return "";
+        String normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD);
+        return normalized.replaceAll("\\p{M}", "");
     }
 }

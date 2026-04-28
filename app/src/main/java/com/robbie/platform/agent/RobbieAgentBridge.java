@@ -120,6 +120,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             registerNavigationActions();
             registerLedActions();
             registerTourActions();
+            registerModeActions();
 
             ready = true;
             Log.i(TAG, "RobbieAgentBridge initialized with all actions");
@@ -396,7 +397,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             "com.robbie.action.RESTORE_LED_DEFAULT",
             "Restaurar LEDs",
             "Restaura los LEDs del robot al color y estado por defecto (rosa Ikalp).",
-            null,
+            Collections.emptyList(),
             (action, params) -> {
                 dispatchAction("com.robbie.action.RESTORE_LED_DEFAULT", action, params);
                 return true;
@@ -428,6 +429,23 @@ public class RobbieAgentBridge implements IAgentBridge {
             Collections.emptyList(),
             (action, params) -> {
                 dispatchAction("com.robbie.action.STOP_TOUR", action, params);
+                return true;
+            }
+        ));
+    }
+
+    private void registerModeActions() {
+        // Action: Cambiar modo
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.SWITCH_MODE",
+            "Cambiar modo",
+            "Cambia el modo de operacion del robot (retail, exhibition, idle). Usa este action cuando el usuario pida cambiar de modo.",
+            Arrays.asList(
+                new Parameter("mode", ParameterType.STRING,
+                    "Modo al que cambiar (retail, exhibition, idle)", true, null)
+            ),
+            (action, params) -> {
+                dispatchAction("com.robbie.action.SWITCH_MODE", action, params);
                 return true;
             }
         ));

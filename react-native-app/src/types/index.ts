@@ -8,6 +8,11 @@ export interface Product {
   category: string;
   stock: number;
   tags: string[];
+  aiRecommended?: boolean;
+  inStock?: boolean;
+  brand?: string;
+  discount?: number;
+  subcategory?: string;
 }
 
 export interface SearchResult {

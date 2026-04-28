@@ -326,8 +326,8 @@ public class RobbieRetailActivity extends EveActivity {
      */
     private RobbieConfig getRobbieConfig() {
         try {
-            com.robbie.moduleapp.lidd.RobotApp app = 
-                (com.robbie.moduleapp.lidd.RobotApp) getApplication();
+            com.robbie.RobotApp app = 
+                (com.robbie.RobotApp) getApplication();
             return app.getRobbieConfig();
         } catch (Exception e) {
             Log.w(TAG, "No se pudo obtener RobbieConfig", e);

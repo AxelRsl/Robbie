@@ -1,4 +1,4 @@
-package com.robbie.moduleapp.lidd;
+package com.robbie;
 
 import android.app.Application;
 import android.content.Intent;
@@ -27,7 +27,7 @@ import com.ainirobot.agent.action.Actions;
 import java.util.List;
 
 /**
- * Application principal de xiabao_lidd.
+ * Application principal de robbie.
  *
  * Inicializa:
  * - RemoteConfigManager (configuracion remota)

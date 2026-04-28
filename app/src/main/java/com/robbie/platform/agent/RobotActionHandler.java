@@ -7,10 +7,10 @@ import android.util.Log;
 
 import com.robbie.core.hardware.LedController;
 import com.robbie.core.navigation.TourExecutor;
-import com.robbie.moduleapp.lidd.RobotApp;
+import com.robbie.RobotApp;
 import com.robbie.platform.retail.Product;
-import com.robbie.platform.retail.RecommendationEngine;
 import com.robbie.platform.retail.RobbieConfig;
+import com.robbie.platform.retail.RobbieRecommendationEngine;
 import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.entity.ProductEntity;
 
@@ -42,9 +42,10 @@ import java.util.List;
 public class RobotActionHandler {
 
     private static final String TAG = "RobotActionHandler";
+    private static RobotActionHandler instance;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final RecommendationEngine recommendationEngine;
+    private final RobbieRecommendationEngine robbieRecommendationEngine;
     private final android.content.Context context;
 
     private RobotApi robotApi;
@@ -71,7 +72,7 @@ public class RobotActionHandler {
         void onNavigationEvent(String destination, boolean isNavigating);
         void onProductSearch(String query, List<Product> products);
         void onProductSearchFromDb(String query, String recommendation, List<ProductEntity> products);
-        void onProductRecommendation(String explanation, List<String> productIds);
+        void onProductRecommendation(String explanation, List<Product> products);
         void onProductDetail(String productId);
         void onLedEvent(String eventType, String data);
         void onModeSwitch(String mode);
@@ -79,7 +80,12 @@ public class RobotActionHandler {
 
     public RobotActionHandler(android.content.Context context) {
         this.context = context.getApplicationContext();
-        this.recommendationEngine = new RecommendationEngine();
+        this.robbieRecommendationEngine = new RobbieRecommendationEngine();
+        instance = this;
+    }
+
+    public static RobotActionHandler getInstance() {
+        return instance;
     }
 
     public void setAgentBridge(IAgentBridge bridge) {
@@ -114,7 +120,7 @@ public class RobotActionHandler {
             case "com.robbie.action.SEARCH_PRODUCTS":
                 return handleSearchProductsFromDb(params);
             case "com.robbie.action.search_products":
-                return handleSearchProductsLocal(params);
+                return handleSearchProductsFromDb(params);
             case "com.robbie.action.SET_LED_COLOR":
                 return handleSetLedColor(params);
             case "com.robbie.action.START_LED_EFFECT":
@@ -125,6 +131,8 @@ public class RobotActionHandler {
                 return handleStartTour(params);
             case "com.robbie.action.STOP_TOUR":
                 return handleStopTour();
+            case "com.robbie.action.SWITCH_MODE":
+                return handleSwitchMode(params);
             default:
                 Log.w(TAG, "Unknown action: " + actionName);
                 return false;
@@ -173,13 +181,6 @@ public class RobotActionHandler {
         return true;
     }
 
-    private boolean handleSearchProductsLocal(Bundle params) {
-        String query = params != null ? params.getString("query", "") : "";
-        Log.d(TAG, "SEARCH_LOCAL: query=" + query);
-        mainHandler.post(() -> searchProducts(query));
-        return true;
-    }
-
     private boolean handleSearchProductsFromDb(Bundle params) {
         String query = params != null ? params.getString("query", "") : "";
         String recommendation = params != null ? params.getString("recommendation", "") : "";
@@ -194,28 +195,72 @@ public class RobotActionHandler {
         mainHandler.post(() -> {
             try {
                 RobbieDatabase db = RobbieDatabase.getInstance(context);
-                List<ProductEntity> products = db.productDao().searchProducts(query);
-                Log.i(TAG, "Found " + products.size() + " products for: " + query);
-
-                if (resultCallback != null) {
-                    resultCallback.onProductSearchFromDb(query, recommendation, products);
-                    resultCallback.onModeSwitch("retail");
+                
+                // DEBUG: Verificar total de productos en BD
+                List<ProductEntity> allProducts = db.productDao().getAllProductsSync();
+                Log.i(TAG, "Total products in DB: " + allProducts.size());
+                if (!allProducts.isEmpty()) {
+                    ProductEntity first = allProducts.get(0);
+                    Log.d(TAG, "Sample product: " + first.getName() + " | " + first.getCategory() + " | " + first.getBrand());
                 }
+                
+                // Detectar si es una consulta de recomendación (palabras clave como "necesito", "recomienda", "ayuda")
+                String queryLower = query.toLowerCase();
+                boolean isRecommendationQuery = queryLower.contains("necesito") || 
+                                              queryLower.contains("recomienda") || 
+                                              queryLower.contains("ayuda") ||
+                                              queryLower.contains("quiero") ||
+                                              queryLower.contains("busco algo para");
+                
+                if (isRecommendationQuery && !allProducts.isEmpty()) {
+                    // Usar motor de recomendaciones AI
+                    Log.i(TAG, "Using AI recommendation engine for query: " + query);
+                    robbieRecommendationEngine.recommend(allProducts, query, null, 
+                        new RobbieRecommendationEngine.RecommendationCallback() {
+                            @Override
+                            public void onResult(String explanation, List<String> recommendedProductIds) {
+                                mainHandler.post(() -> {
+                                    // Convertir IDs a ProductEntity
+                                    List<ProductEntity> recommendedProducts = new ArrayList<>();
+                                    for (String id : recommendedProductIds) {
+                                        for (ProductEntity p : allProducts) {
+                                            if (p.getId().equals(id)) {
+                                                recommendedProducts.add(p);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    
+                                    Log.i(TAG, "AI recommended " + recommendedProducts.size() + " products");
+                                    
+                                    if (resultCallback != null) {
+                                        resultCallback.onProductSearchFromDb(query, explanation, recommendedProducts);
+                                        resultCallback.onModeSwitch("retail");
+                                    }
 
-                String ttsResponse;
-                if (!recommendation.isEmpty()) {
-                    ttsResponse = recommendation + ". Encontre " + products.size() + " productos relacionados.";
+                                    String ttsResponse = explanation + ". Te muestro " + recommendedProducts.size() + " productos recomendados.";
+                                    if (!recommendedProducts.isEmpty()) {
+                                        ProductEntity first = recommendedProducts.get(0);
+                                        ttsResponse += " El primero es " + first.getName();
+                                        if (first.getPrice() > 0) {
+                                            ttsResponse += " con precio de $" + String.format("%.0f", first.getPrice());
+                                        }
+                                    }
+                                    if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
+                                });
+                            }
+
+                            @Override
+                            public void onError(String error) {
+                                Log.e(TAG, "AI recommendation error: " + error);
+                                // Fallback a búsqueda normal
+                                performNormalSearch(db, allProducts, query, recommendation);
+                            }
+                        });
                 } else {
-                    ttsResponse = "Encontre " + products.size() + " productos relacionados con " + query + ".";
+                    // Búsqueda normal por nombre/categoría
+                    performNormalSearch(db, allProducts, query, recommendation);
                 }
-                if (products.size() > 0) {
-                    ProductEntity first = products.get(0);
-                    ttsResponse += " El primero es " + first.getName();
-                    if (first.getPrice() > 0) {
-                        ttsResponse += " con precio de $" + String.format("%.0f", first.getPrice());
-                    }
-                }
-                if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
             } catch (Exception e) {
                 Log.e(TAG, "Error in SEARCH_PRODUCTS", e);
                 if (agentBridge != null)
@@ -224,39 +269,101 @@ public class RobotActionHandler {
         });
         return true;
     }
+    
+    private void performNormalSearch(RobbieDatabase db, List<ProductEntity> allProducts, String query, String recommendation) {
+        // Buscar productos
+        List<ProductEntity> products = db.productDao().searchProducts(query);
+        Log.i(TAG, "Found " + products.size() + " products for query: '" + query + "'");
+        
+        // FALLBACK: Si no encuentra nada, usar estrategias alternativas
+        if (products.isEmpty() && !allProducts.isEmpty()) {
+            android.util.Log.w(TAG, "No results for '" + query + "', trying fallback strategies...");
+            
+            // Estrategia 1: Buscar por palabras individuales
+            String[] words = query.toLowerCase().split("\\s+");
+            for (String word : words) {
+                if (word.length() >= 3) { // Solo palabras de 3+ caracteres
+                    List<ProductEntity> wordResults = db.productDao().searchProducts(word);
+                    if (!wordResults.isEmpty()) {
+                        products = wordResults;
+                        android.util.Log.i(TAG, "Found " + products.size() + " products with word: " + word);
+                        break;
+                    }
+                }
+            }
+            
+            // Estrategia 2: Si aún no hay resultados, buscar por categorías comunes
+            if (products.isEmpty()) {
+                String[] commonCategories = {"proteina", "vitamina", "suplemento", "energia", "salud"};
+                String queryLower = query.toLowerCase();
+                for (String category : commonCategories) {
+                    if (queryLower.contains(category)) {
+                        products = db.productDao().getProductsByCategory(category);
+                        if (!products.isEmpty()) {
+                            android.util.Log.i(TAG, "Found " + products.size() + " products in category: " + category);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Estrategia 3: Como último recurso, mostrar productos aleatorios
+            if (products.isEmpty()) {
+                int maxShow = Math.min(5, allProducts.size());
+                products = allProducts.subList(0, maxShow);
+                android.util.Log.i(TAG, "Showing " + products.size() + " random products as fallback");
+            }
+        }
+        
+        Log.i(TAG, "Final results: " + products.size() + " products for: " + query);
 
-    private void triggerRecommendation(String userNeed, String restriction) {
-        List<Product> products = getProducts();
-        if (products.isEmpty()) {
-            Log.w(TAG, "No products for recommendation");
-            if (agentBridge != null)
-                agentBridge.tts("Aun no tengo productos cargados, intenta de nuevo en un momento", 10000);
-            return;
+        if (resultCallback != null) {
+            resultCallback.onProductSearchFromDb(query, recommendation, products);
+            resultCallback.onModeSwitch("retail");
         }
 
-        recommendationEngine.recommend(products, userNeed, restriction,
-                new RecommendationEngine.RecommendationCallback() {
-                    @Override
-                    public void onResult(String explanation, List<String> ids) {
-                        mainHandler.post(() -> showRecommendation(explanation, ids));
-                    }
-                    @Override
-                    public void onError(String error) {
-                        Log.e(TAG, "Recommendation error: " + error);
-                    }
-                });
+        String ttsResponse;
+        if (!recommendation.isEmpty()) {
+            ttsResponse = recommendation + ". Encontre " + products.size() + " productos relacionados.";
+        } else {
+            ttsResponse = "Encontre " + products.size() + " productos relacionados con " + query + ".";
+        }
+        if (!products.isEmpty()) {
+            ProductEntity first = products.get(0);
+            ttsResponse += " El primero es " + first.getName();
+            if (first.getPrice() > 0) {
+                ttsResponse += " con precio de $" + String.format("%.0f", first.getPrice());
+            }
+        }
+        if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
+    }
+
+    private void triggerRecommendation(String userNeed, String restriction) {
+        // Crear Bundle con los parámetros para handleSearchProductsFromDb
+        Bundle params = new Bundle();
+        params.putString("query", userNeed);
+        if (restriction != null && !restriction.isEmpty()) {
+            params.putString("recommendation", restriction);
+        }
+        
+        // Usar el mismo flujo que handleSearchProductsFromDb
+        handleSearchProductsFromDb(params);
     }
 
     private void showRecommendation(String explanation, List<String> productIds) {
         List<Product> products = getProducts();
+        // Marcar productos recomendados
         for (Product p : products) {
             if (productIds.contains(p.getId())) {
                 p.setAiRecommended(true);
+            } else {
+                p.setAiRecommended(false);
             }
         }
         if (resultCallback != null) {
             resultCallback.onModeSwitch("retail");
-            resultCallback.onProductRecommendation(explanation, productIds);
+            // Enviar TODOS los productos con el flag aiRecommended marcado
+            resultCallback.onProductRecommendation(explanation, products);
         }
         if (!explanation.isEmpty() && agentBridge != null) {
             String speech = explanation.length() > 200 ? explanation.substring(0, 200) : explanation;
@@ -518,6 +625,45 @@ public class RobotActionHandler {
         return true;
     }
 
+    private boolean handleSwitchMode(Bundle params) {
+        String mode = params != null ? params.getString("mode", "") : "";
+        Log.d(TAG, "SWITCH_MODE: mode=" + mode);
+        
+        if (mode.isEmpty()) {
+            if (agentBridge != null)
+                agentBridge.tts("No entendi a que modo quieres cambiar. Puedes decir retail, exhibition o idle.", 10000);
+            return true;
+        }
+
+        mainHandler.post(() -> {
+            if (resultCallback != null) {
+                resultCallback.onModeSwitch(mode);
+            }
+            
+            String modeName = mode.toLowerCase();
+            String ttsResponse = "";
+            switch (modeName) {
+                case "retail":
+                    ttsResponse = "Modo retail activado. Estoy listo para ayudar a los clientes.";
+                    break;
+                case "exhibition":
+                    ttsResponse = "Modo exhibicion activado. Preparado para demostraciones.";
+                    break;
+                case "idle":
+                    ttsResponse = "Modo reposo activado.";
+                    break;
+                default:
+                    ttsResponse = "Cambiando a modo " + mode;
+                    break;
+            }
+            
+            if (agentBridge != null) {
+                agentBridge.tts(ttsResponse, 10000);
+            }
+        });
+        return true;
+    }
+
     // ==================== Face Tracking ====================
 
     public void startFaceTracking() {
@@ -550,6 +696,7 @@ public class RobotActionHandler {
                             RobotActionHandler.this.startFaceTracking();
                         }
                     });
+                    mainHandler.post(() -> LedController.getInstance().restoreDefault());
                 }
 
                 @Override

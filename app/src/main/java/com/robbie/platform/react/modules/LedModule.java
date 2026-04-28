@@ -92,6 +92,87 @@ public class LedModule extends ReactContextBaseJavaModule {
         }
     }
 
+    @ReactMethod
+    public void setPredefinedEffect(int effect, Promise promise) {
+        try {
+            LedController.getInstance().setPredefinedEffect(effect);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting predefined effect", e);
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setGreenBreathingEffect(Promise promise) {
+        try {
+            LedController.getInstance().setGreenBreathingEffect();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setBlueBreathingEffect(Promise promise) {
+        try {
+            LedController.getInstance().setBlueBreathingEffect();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setRedNormalEffect(Promise promise) {
+        try {
+            LedController.getInstance().setRedNormalEffect();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setTurnRightEffect(Promise promise) {
+        try {
+            LedController.getInstance().setTurnRightEffect();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setTurnLeftEffect(Promise promise) {
+        try {
+            LedController.getInstance().setTurnLeftEffect();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void turnOffAllEffects(Promise promise) {
+        try {
+            LedController.getInstance().turnOffAllEffects();
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getLedCapabilities(Promise promise) {
+        try {
+            String json = gson.toJson(LedController.getInstance().getLedCapabilities());
+            promise.resolve(json);
+        } catch (Exception e) {
+            promise.reject("LED_ERROR", e.getMessage());
+        }
+    }
+
     private int parseColor(String hex) {
         if (hex.startsWith("#")) hex = hex.substring(1);
         return Integer.parseInt(hex, 16);

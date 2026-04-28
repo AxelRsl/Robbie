@@ -30,7 +30,19 @@ public interface ProductDao {
     @Query("SELECT * FROM products WHERE category = :category ORDER BY name ASC")
     List<ProductEntity> getProductsByCategory(String category);
     
-    @Query("SELECT * FROM products WHERE name LIKE '%' || :query || '%' OR category LIKE '%' || :query || '%' OR brand LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM products WHERE " +
+           "LOWER(name) LIKE '%' || LOWER(:query) || '%' OR " +
+           "LOWER(category) LIKE '%' || LOWER(:query) || '%' OR " +
+           "LOWER(brand) LIKE '%' || LOWER(:query) || '%' OR " +
+           "LOWER(description) LIKE '%' || LOWER(:query) || '%' OR " +
+           "LOWER(ingredients) LIKE '%' || LOWER(:query) || '%' " +
+           "ORDER BY " +
+           "CASE " +
+           "  WHEN LOWER(name) LIKE LOWER(:query) || '%' THEN 1 " +
+           "  WHEN LOWER(name) LIKE '%' || LOWER(:query) || '%' THEN 2 " +
+           "  WHEN LOWER(category) LIKE LOWER(:query) || '%' THEN 3 " +
+           "  ELSE 4 " +
+           "END, name ASC")
     List<ProductEntity> searchProducts(String query);
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)

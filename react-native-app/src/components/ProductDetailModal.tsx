@@ -32,7 +32,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <Text style={styles.closeButtonText}>X</Text>
           </TouchableOpacity>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             <Image
               source={{ uri: product.imageUrl }}
               style={styles.productImage}
@@ -51,18 +51,18 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     styles.stockBadge,
                     {
                       backgroundColor:
-                        product.stock > 0 ? '#E8F5E9' : '#FFEBEE',
+                        product.inStock !== false ? '#E8F5E9' : '#FFEBEE',
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.stockText,
-                      { color: product.stock > 0 ? '#2E7D32' : '#C62828' },
+                      { color: product.inStock !== false ? '#2E7D32' : '#C62828' },
                     ]}
                   >
-                    {product.stock > 0
-                      ? `${product.stock} disponibles`
+                    {product.inStock !== false
+                      ? 'Disponible'
                       : 'Agotado'}
                   </Text>
                 </View>
@@ -118,6 +118,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  scrollContent: {
+    borderRadius: 16,
   },
   closeButton: {
     position: 'absolute',

@@ -225,13 +225,94 @@ export class RobotBridge {
     }
   }
 
+  // --- Efectos LED Predefinidos (API Oficial OrionStar) ---
+
+  static async setPredefinedLedEffect(effect: number): Promise<void> {
+    try {
+      await LedModule.setPredefinedEffect(effect);
+      console.log('[RobotBridge] Efecto predefinido LED aplicado:', '0x' + effect.toString(16));
+    } catch (error) {
+      console.error('Error aplicando efecto predefinido LED:', error);
+      throw error;
+    }
+  }
+
+  static async setGreenBreathingEffect(): Promise<void> {
+    try {
+      await LedModule.setGreenBreathingEffect();
+      console.log('[RobotBridge] Efecto respiración verde activado');
+    } catch (error) {
+      console.error('Error activando efecto respiración verde:', error);
+      throw error;
+    }
+  }
+
+  static async setBlueBreathingEffect(): Promise<void> {
+    try {
+      await LedModule.setBlueBreathingEffect();
+      console.log('[RobotBridge] Efecto respiración azul activado');
+    } catch (error) {
+      console.error('Error activando efecto respiración azul:', error);
+      throw error;
+    }
+  }
+
+  static async setRedNormalEffect(): Promise<void> {
+    try {
+      await LedModule.setRedNormalEffect();
+      console.log('[RobotBridge] Efecto normal rojo activado');
+    } catch (error) {
+      console.error('Error activando efecto normal rojo:', error);
+      throw error;
+    }
+  }
+
+  static async setTurnRightEffect(): Promise<void> {
+    try {
+      await LedModule.setTurnRightEffect();
+      console.log('[RobotBridge] Efecto giro derecha activado');
+    } catch (error) {
+      console.error('Error activando efecto giro derecha:', error);
+      throw error;
+    }
+  }
+
+  static async setTurnLeftEffect(): Promise<void> {
+    try {
+      await LedModule.setTurnLeftEffect();
+      console.log('[RobotBridge] Efecto giro izquierda activado');
+    } catch (error) {
+      console.error('Error activando efecto giro izquierda:', error);
+      throw error;
+    }
+  }
+
+  static async turnOffAllLedEffects(): Promise<void> {
+    try {
+      await LedModule.turnOffAllEffects();
+      console.log('[RobotBridge] Todos los efectos LED apagados');
+    } catch (error) {
+      console.error('Error apagando efectos LED:', error);
+      throw error;
+    }
+  }
+
+  static async getLedCapabilities(): Promise<any> {
+    try {
+      const capsJson = await LedModule.getLedCapabilities();
+      return JSON.parse(capsJson);
+    } catch (error) {
+      console.error('Error obteniendo capacidades LED:', error);
+      return { hasProZcbLed: false, hasClavicleLight: false };
+    }
+  }
+
   static async stopNavigation(): Promise<void> {
     try {
-      const { RobotNavigationModule } = NativeModules;
-      await RobotNavigationModule.stopNavigation();
+      await RobotSkillModule.executeAction('com.robbie.action.STOP_NAVIGATION', '{}');
       console.log('[RobotBridge] Navegación detenida');
     } catch (error) {
-      console.error('[RobotBridge] Error deteniendo navegación:', error);
+      console.error('Error deteniendo navegación:', error);
       throw error;
     }
   }
