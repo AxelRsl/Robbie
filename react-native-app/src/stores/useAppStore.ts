@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RetailTemplate, MenuTemplate, PromoTemplate, Product, UiConfig, NavigationState } from '@/types';
+import type { RetailTemplate, MenuTemplate, PromoTemplate, Product, UiConfig, NavigationState, SceneProject } from '@/types';
 
 const DEFAULT_UI_CONFIG: UiConfig = {
   showSearchBar: false,
@@ -20,6 +20,8 @@ interface AppState {
   searchResults: Product[];
   products: Product[];
   productsLoaded: boolean;
+  sceneProject: SceneProject | null;
+  sceneProjectLoaded: boolean;
   
   setRetailTemplate: (template: RetailTemplate) => void;
   setMenuTemplate: (template: MenuTemplate) => void;
@@ -34,6 +36,7 @@ interface AppState {
   setSearchResults: (results: Product[]) => void;
   setProducts: (products: Product[]) => void;
   setProductsLoaded: (loaded: boolean) => void;
+  setSceneProject: (project: SceneProject | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -49,6 +52,8 @@ export const useAppStore = create<AppState>((set) => ({
   searchResults: [],
   products: [],
   productsLoaded: false,
+  sceneProject: null,
+  sceneProjectLoaded: false,
   
   setRetailTemplate: (template) => set({ retailTemplate: template }),
   setMenuTemplate: (template) => set({ menuTemplate: template }),
@@ -71,4 +76,5 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchResults: (results) => set({ searchResults: results }),
   setProducts: (products) => set({ products, productsLoaded: true }),
   setProductsLoaded: (loaded) => set({ productsLoaded: loaded }),
+  setSceneProject: (project) => set({ sceneProject: project, sceneProjectLoaded: true }),
 }));

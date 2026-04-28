@@ -52,6 +52,39 @@ export type RetailTemplate = 'grid' | 'list';
 export type MenuTemplate = 'classic' | 'modern';
 export type PromoTemplate = 'video' | 'carousel';
 
+export type TemplateType =
+  | 'THREE_CARDS'
+  | 'FOUR_CARDS'
+  | 'FIVE_CARDS'
+  | 'BUBBLE_LEFT'
+  | 'BUBBLE_BOTTOM'
+  | 'FUNCTIONAL_GRID';
+
+export type TitleType = 'TEXT' | 'IMAGE';
+
+export interface SceneFunction {
+  id: string;
+  projectId: string;
+  name: string;
+  icon: string;
+  activationCommand: string;
+  orderIndex: number;
+  color: string;
+  description: string;
+}
+
+export interface SceneProject {
+  id: string;
+  name: string;
+  titleType: TitleType;
+  titleText: string;
+  titleImageUrl: string;
+  templateType: TemplateType;
+  backgroundImageUrl: string;
+  isActive: boolean;
+  functions: SceneFunction[];
+}
+
 export interface AppMode {
   id: string;
   name: string;
@@ -89,3 +122,12 @@ export interface NavigationState {
   estimatedTime?: number;
   distance?: number;
 }
+
+export const TEMPLATE_LABELS: Record<TemplateType, string> = {
+  THREE_CARDS: 'Plantilla de tres tarjetas',
+  FOUR_CARDS: 'Plantillas de cuatro tarjetas',
+  FIVE_CARDS: 'Plantilla de cinco tarjetas',
+  BUBBLE_LEFT: 'Plantilla de burbuja del lado izquierdo',
+  BUBBLE_BOTTOM: 'Plantilla de burbuja inferior',
+  FUNCTIONAL_GRID: 'Plantilla de experiencia funcional',
+};

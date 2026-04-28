@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import type { Product, Promotion, PromoVideo } from '@/types';
+import type { Product, Promotion, PromoVideo, SceneProject } from '@/types';
 
 const { CloudApiModule, ProductsModule, RobbieConfig } = NativeModules;
 
@@ -94,6 +94,23 @@ class CloudApiService {
         description: 'No te pierdas estas ofertas',
       },
     ];
+  }
+
+  async getActiveSceneProject(): Promise<SceneProject | null> {
+    console.log('[CloudApi] getActiveSceneProject llamado');
+    try {
+      const response = await fetch('http://127.0.0.1:8080/api/scene-projects/active');
+      if (!response.ok) {
+        console.log('[CloudApi] No hay proyecto de escena activo');
+        return null;
+      }
+      const project = await response.json();
+      console.log('[CloudApi] Proyecto activo:', project.name, '- template:', project.templateType);
+      return project;
+    } catch (error) {
+      console.warn('[CloudApi] Error obteniendo proyecto de escena:', error);
+      return null;
+    }
   }
 
   async refreshProducts(): Promise<Product[]> {

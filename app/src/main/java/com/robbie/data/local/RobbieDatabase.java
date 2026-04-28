@@ -12,11 +12,15 @@ import com.robbie.data.local.dao.AnimationDao;
 import com.robbie.data.local.dao.ConfigDao;
 import com.robbie.data.local.dao.MapDao;
 import com.robbie.data.local.dao.ProductDao;
+import com.robbie.data.local.dao.SceneFunctionDao;
+import com.robbie.data.local.dao.SceneProjectDao;
 import com.robbie.data.local.dao.TourStopDao;
 import com.robbie.data.local.entity.AnimationEntity;
 import com.robbie.data.local.entity.ConfigEntity;
 import com.robbie.data.local.entity.MapEntity;
 import com.robbie.data.local.entity.ProductEntity;
+import com.robbie.data.local.entity.SceneFunctionEntity;
+import com.robbie.data.local.entity.SceneProjectEntity;
 import com.robbie.data.local.entity.TourStopEntity;
 
 @Database(
@@ -25,9 +29,11 @@ import com.robbie.data.local.entity.TourStopEntity;
         MapEntity.class,
         TourStopEntity.class,
         ConfigEntity.class,
-        AnimationEntity.class
+        AnimationEntity.class,
+        SceneProjectEntity.class,
+        SceneFunctionEntity.class
     },
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(StringListConverter.class)
@@ -40,6 +46,8 @@ public abstract class RobbieDatabase extends RoomDatabase {
     public abstract TourStopDao tourStopDao();
     public abstract ConfigDao configDao();
     public abstract AnimationDao animationDao();
+    public abstract SceneProjectDao sceneProjectDao();
+    public abstract SceneFunctionDao sceneFunctionDao();
     
     private static volatile RobbieDatabase INSTANCE = null;
     

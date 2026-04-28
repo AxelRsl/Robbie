@@ -2,119 +2,102 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
+  ImageBackground,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
 } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { CloudApi } from '@/services/CloudApi';
 import { useTheme } from '@/contexts/ThemeContext';
 import { createStyles, GlobalStyles } from '@/theme/styles';
 import { Icon } from '@/components/ui/Icon';
+import {
+  ThreeCardsTemplate,
+  FourCardsTemplate,
+  FiveCardsTemplate,
+  BubbleLeftTemplate,
+  BubbleBottomTemplate,
+  FunctionalGridTemplate,
+} from '@/components/templates';
+import type { SceneFunction, SceneProject, TemplateType } from '@/types';
 
-interface MenuItem {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  screen: string;
-  serverTitle?: string;
-  serverDescription?: string;
-}
-
-// Menú principal - títulos y descripciones vendrán del servidor
-const allMenuItems: MenuItem[] = [
+// Funciones por defecto cuando no hay proyecto de escena configurado
+const DEFAULT_FUNCTIONS: SceneFunction[] = [
   {
     id: 'retail',
-    title: 'Productos', // Fallback
-    description: 'Catálogo de productos', // Fallback
+    projectId: 'default',
+    name: 'Productos',
     icon: 'shoppingCart',
-    color: '#E4027C', // Color primario del panel
-    screen: 'Retail',
+    activationCommand: 'retail',
+    orderIndex: 0,
+    color: '#E4027C',
+    description: 'Catalogo de productos',
   },
   {
     id: 'promo',
-    title: 'Promociones', // Fallback
-    description: 'Ofertas especiales', // Fallback
+    projectId: 'default',
+    name: 'Promociones',
     icon: 'sparkles',
-    color: '#00BFA5', // Color accent del panel
-    screen: 'Promo',
+    activationCommand: 'promo',
+    orderIndex: 1,
+    color: '#00BFA5',
+    description: 'Ofertas especiales',
   },
   {
     id: 'navigate',
-    title: 'Navegar', // Fallback
-    description: 'Ir a ubicación', // Fallback
+    projectId: 'default',
+    name: 'Navegar',
     icon: 'navigation',
-    color: '#F472B6', // Rosa claro del panel
-    screen: 'Navigate',
+    activationCommand: 'navigating',
+    orderIndex: 2,
+    color: '#F472B6',
+    description: 'Ir a ubicacion',
   },
   {
     id: 'search',
-    title: 'Buscar', // Fallback
-    description: 'Búsqueda por voz', // Fallback
+    projectId: 'default',
+    name: 'Buscar',
     icon: 'search',
-    color: '#10B981', // Verde del panel
-    screen: 'Search',
+    activationCommand: 'retail',
+    orderIndex: 3,
+    color: '#10B981',
+    description: 'Busqueda por voz',
   },
 ];
 
 export const MenuScreen: React.FC = () => {
-  const { setCurrentMode, setUiConfig } = useAppStore();
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(allMenuItems);
+  const { setCurrentMode, sceneProject, sceneProjectLoaded, setSceneProject } = useAppStore();
   const [loading, setLoading] = useState(true);
   const { theme } = useTheme();
   const styles = createStyles(theme);
-  
-  // Template fijo en moderno (sin botón de cambio)
-  const menuTemplate = 'modern';
 
   useEffect(() => {
-    loadValidScreens();
+    loadSceneProject();
   }, []);
 
-  const loadValidScreens = async () => {
+  const loadSceneProject = async () => {
     try {
-      const config = await CloudApi.getConfig();
-      console.log('[MenuScreen] Configuración cargada:', config);
-      
-      if (config.validScreens && config.validScreens.length > 0) {
-        // Filtrar pantallas basado en validScreens de la API
-        const filtered = allMenuItems.filter(item => 
-          config.validScreens.includes(item.screen)
-        );
-        console.log('[MenuScreen] Pantallas filtradas:', filtered.length, 'de', allMenuItems.length);
-        setMenuItems(filtered);
-      } else {
-        // Si no hay validScreens, mostrar todas
-        console.log('[MenuScreen] No hay validScreens, mostrando todas');
-        setMenuItems(allMenuItems);
-      }
-
-      if (config.uiConfig) {
-        setUiConfig(config.uiConfig);
-        console.log('[MenuScreen] uiConfig aplicado:', JSON.stringify(config.uiConfig));
+      if (!sceneProjectLoaded) {
+        const project = await CloudApi.getActiveSceneProject();
+        console.log('[MenuScreen] Proyecto de escena cargado:', project?.name || 'ninguno');
+        setSceneProject(project);
       }
     } catch (error) {
-      console.error('[MenuScreen] Error cargando configuración:', error);
-      // En caso de error, mostrar todas las pantallas
-      setMenuItems(allMenuItems);
+      console.error('[MenuScreen] Error cargando proyecto de escena:', error);
+      setSceneProject(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // Template fijo - no se puede cambiar
-
-  const handleMenuPress = (item: MenuItem) => {
-    if (item.screen === 'Navigate') {
-      setCurrentMode('navigating');
-    } else {
-      setCurrentMode(item.screen.toLowerCase());
-    }
+  const handleFunctionPress = (fn: SceneFunction) => {
+    const command = fn.activationCommand;
+    console.log('[MenuScreen] Funcion presionada:', fn.name, '- comando:', command);
+    setCurrentMode(command);
   };
 
-  if (loading) {
+  if (loading && !sceneProjectLoaded) {
     return (
       <View style={[styles.container, GlobalStyles.center]}>
         <Icon name="loading" size="xl" color={theme.colors.primary} />
@@ -123,40 +106,104 @@ export const MenuScreen: React.FC = () => {
     );
   }
 
-  // Solo template moderno - minimalista
+  const functions = sceneProject?.functions?.length
+    ? sceneProject.functions
+    : DEFAULT_FUNCTIONS;
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Grid minimalista - 4 columnas, sin bordes, con margen generoso */}
-      <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-evenly', alignContent: 'center', paddingHorizontal: 24, paddingVertical: 24 }}>
-        {menuItems.map((item: MenuItem) => (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => handleMenuPress(item)}
-            activeOpacity={0.7}
-            style={{
-              width: '22%',
-              aspectRatio: 1,
-              marginBottom: 20,
-              marginHorizontal: 4,
-              justifyContent: 'center',
-              alignItems: 'center',
-              backgroundColor: 'transparent',
-            }}
-          >
-            <Icon name={item.icon} size="lg" color={item.color} />
-            <Text style={{ fontSize: 9, fontWeight: '600', color: theme.colors.onSurface, marginTop: 6, textAlign: 'center' }} numberOfLines={1}>
-              {item.title}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+  const templateType: TemplateType = sceneProject?.templateType || 'FUNCTIONAL_GRID';
+
+  const renderTemplate = () => {
+    switch (templateType) {
+      case 'THREE_CARDS':
+        return <ThreeCardsTemplate functions={functions} onPress={handleFunctionPress} />;
+      case 'FOUR_CARDS':
+        return <FourCardsTemplate functions={functions} onPress={handleFunctionPress} />;
+      case 'FIVE_CARDS':
+        return <FiveCardsTemplate functions={functions} onPress={handleFunctionPress} />;
+      case 'BUBBLE_LEFT':
+        return <BubbleLeftTemplate functions={functions} onPress={handleFunctionPress} />;
+      case 'BUBBLE_BOTTOM':
+        return <BubbleBottomTemplate functions={functions} onPress={handleFunctionPress} />;
+      case 'FUNCTIONAL_GRID':
+      default:
+        return <FunctionalGridTemplate functions={functions} onPress={handleFunctionPress} />;
+    }
+  };
+
+  const renderTitle = () => {
+    if (!sceneProject) return null;
+
+    if (sceneProject.titleType === 'IMAGE' && sceneProject.titleImageUrl) {
+      return (
+        <View style={localStyles.titleBar}>
+          <Image
+            source={{ uri: sceneProject.titleImageUrl }}
+            style={localStyles.titleImage}
+            resizeMode="contain"
+          />
+        </View>
+      );
+    }
+
+    if (sceneProject.titleType === 'TEXT' && sceneProject.titleText) {
+      return (
+        <View style={localStyles.titleBar}>
+          <Text style={[localStyles.titleText, { color: theme.colors.onBackground }]}>
+            {sceneProject.titleText}
+          </Text>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
+  const hasBackground = sceneProject?.backgroundImageUrl;
+
+  const content = (
+    <View style={[styles.container, { backgroundColor: hasBackground ? 'transparent' : theme.colors.background }]}>
+      {renderTitle()}
+      {renderTemplate()}
     </View>
   );
+
+  if (hasBackground) {
+    return (
+      <ImageBackground
+        source={{ uri: sceneProject!.backgroundImageUrl }}
+        style={localStyles.backgroundImage}
+        resizeMode="cover"
+      >
+        <View style={localStyles.backgroundOverlay} />
+        {content}
+      </ImageBackground>
+    );
+  }
+
+  return content;
 };
 
-// Los estilos ahora vienen del sistema de temas
-// Solo definimos estilos específicos de esta pantalla
 const localStyles = StyleSheet.create({
-  // Estilos específicos del MenuScreen si son necesarios
+  titleBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    alignItems: 'center',
+  },
+  titleText: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  titleImage: {
+    height: 32,
+    maxWidth: 200,
+  },
+  backgroundImage: {
+    flex: 1,
+  },
+  backgroundOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
 });
