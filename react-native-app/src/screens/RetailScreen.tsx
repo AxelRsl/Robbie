@@ -16,6 +16,11 @@ import { RobotBridge } from '@/services/RobotBridge';
 import { useAppStore } from '@/stores/useAppStore';
 import type { Product } from '@/types';
 import { LedHelper } from '@/utils/LedHelper';
+import { useTheme } from '@/contexts/ThemeContext';
+import { createStyles, GlobalStyles } from '@/theme/styles';
+import { GlassPanel } from '@/components/ui/GlassPanel';
+import { Icon } from '@/components/ui/Icon';
+import { Button } from '@/components/ui/Button';
 
 const { ProductSearchModule } = NativeModules;
 
@@ -24,6 +29,8 @@ export const RetailScreen: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [currentSearchQuery, setCurrentSearchQuery] = useState<string>('');
   const [searchCategory, setSearchCategory] = useState<string>('');
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
   
   const { 
     retailTemplate, 
@@ -81,8 +88,8 @@ export const RetailScreen: React.FC = () => {
         if (event.products.length > 0) {
           // Obtener categorías de productos recomendados
           const categories = [...new Set(event.products
-            .filter(p => p.aiRecommended)
-            .map(p => p.category)
+            .filter((p: any) => p.aiRecommended)
+            .map((p: any) => p.category)
             .filter(Boolean))];
           setSearchCategory(categories.join(', ') || 'Varios');
         }
@@ -124,7 +131,7 @@ export const RetailScreen: React.FC = () => {
         // Actualizar información de búsqueda
         setCurrentSearchQuery(query);
         if (results.length > 0) {
-          const categories = [...new Set(results.map((p: any) => p.category).filter(Boolean))];
+          const categories = [...new Set(results.map((p: Product) => p.category).filter(Boolean))];
           setSearchCategory(categories.join(', ') || '');
         }
         
@@ -139,7 +146,7 @@ export const RetailScreen: React.FC = () => {
         // Actualizar información de búsqueda
         setCurrentSearchQuery(query);
         if (results.length > 0) {
-          const categories = [...new Set(results.map((p: any) => p.category).filter(Boolean))];
+          const categories = [...new Set(results.map((p: Product) => p.category).filter(Boolean))];
           setSearchCategory(categories.join(', ') || '');
         }
         
@@ -178,29 +185,21 @@ export const RetailScreen: React.FC = () => {
 
   if (!productsLoaded) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#00695C" />
-        <Text style={styles.loadingText}>Cargando productos...</Text>
+      <View style={[styles.container, GlobalStyles.center]}>
+        <Icon name="loading" size="xl" color={theme.colors.primary} />
+        <Text style={[styles.body, { marginTop: 16 }]}>Cargando productos...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Header minimalista */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 }}>
         <TouchableOpacity onPress={() => setCurrentMode('menu')} activeOpacity={0.7}>
-          <Text style={styles.backButton}>← Menu</Text>
+          <Icon name="chevronLeft" size="lg" color={theme.colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Modo Minorista</Text>
-        <TouchableOpacity 
-          style={styles.templateButton} 
-          onPress={toggleTemplate}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.templateButtonText}>
-            {retailTemplate === 'grid' ? '☰ Lista' : '⊞ Cuadricula'}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
       </View>
 
       {uiConfig.showSearchBar && (
@@ -211,64 +210,51 @@ export const RetailScreen: React.FC = () => {
         />
       )}
 
-      {/* Información de búsqueda/categoría */}
-      {(currentSearchQuery || searchCategory) && (
-        <View style={styles.searchInfoContainer}>
-          <View style={styles.searchInfoContent}>
-            {currentSearchQuery && (
-              <Text style={styles.searchQueryText}>
-                Búsqueda: <Text style={styles.searchQueryValue}>{currentSearchQuery}</Text>
-              </Text>
-            )}
-            {searchCategory && (
-              <Text style={styles.searchCategoryText}>
-                Categoría: <Text style={styles.searchCategoryValue}>{searchCategory}</Text>
-              </Text>
-            )}
-          </View>
-          <TouchableOpacity 
-            style={styles.clearSearchInfo}
-            onPress={() => {
-              setCurrentSearchQuery('');
-              setSearchCategory('');
-              setSearchResults([]);
-              setStoreSearchResults([]);
-              setSearchRecommendation('');
-            }}
-          >
-            <Text style={styles.clearSearchInfoText}>✕</Text>
-          </TouchableOpacity>
+      {/* Info de busqueda horizontal y minimalista */}
+      {(currentSearchQuery || searchCategory || isSearching) && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 6 }}>
+          {isSearching && <Icon name="loading" size="sm" color={theme.colors.primary} />}
+          {currentSearchQuery ? (
+            <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, marginLeft: isSearching ? 6 : 0 }}>
+              {currentSearchQuery}
+            </Text>
+          ) : null}
+          {searchCategory ? (
+            <Text style={{ fontSize: 10, color: theme.colors.primary, marginLeft: 8, fontWeight: '600' }}>
+              {searchCategory}
+            </Text>
+          ) : null}
+          {searchResults.length > 0 && (
+            <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, marginLeft: 8 }}>
+              {searchResults.length} resultados
+            </Text>
+          )}
+          <View style={{ flex: 1 }} />
+          {(currentSearchQuery || searchResults.length > 0) && (
+            <TouchableOpacity
+              onPress={() => {
+                setCurrentSearchQuery('');
+                setSearchCategory('');
+                setSearchResults([]);
+                setStoreSearchResults([]);
+                setSearchRecommendation('');
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="close" size="sm" color={theme.colors.onSurfaceVariant} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
-      {isSearching && (
-        <View style={styles.searchingContainer}>
-          <ActivityIndicator size="small" color="#00695C" />
-          <Text style={styles.searchingText}>Buscando...</Text>
-        </View>
-      )}
-
-      {searchRecommendation && (
-        <View style={styles.recommendationContainer}>
-          <Text style={styles.recommendationLabel}>Recomendación:</Text>
-          <Text style={styles.recommendationText}>{searchRecommendation}</Text>
-        </View>
-      )}
-
-      {searchResults.length > 0 && (
-        <View style={styles.resultsHeader}>
-          <Text style={styles.resultsText}>
-            {searchResults.length} resultados encontrados
+      {/* Recomendacion minimalista */}
+      {searchRecommendation ? (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
+          <Text style={{ fontSize: 10, color: theme.colors.warning, fontWeight: '600' }} numberOfLines={2}>
+            {searchRecommendation}
           </Text>
-          <TouchableOpacity onPress={() => {
-            setSearchResults([]);
-            setStoreSearchResults([]);
-            setSearchRecommendation('');
-          }}>
-            <Text style={styles.clearButton}>Limpiar</Text>
-          </TouchableOpacity>
         </View>
-      )}
+      ) : null}
 
       <FlatList
         data={displayProducts}
@@ -282,150 +268,15 @@ export const RetailScreen: React.FC = () => {
             variant={retailTemplate}
           />
         )}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={{ paddingBottom: 16, paddingHorizontal: 8 }}
         showsVerticalScrollIndicator={false}
       />
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  backButton: {
-    fontSize: 14,
-    color: '#00695C',
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#212121',
-  },
-  templateButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#00695C',
-    borderRadius: 16,
-  },
-  templateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#757575',
-  },
-  searchingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-    backgroundColor: '#E8F5E9',
-  },
-  searchingText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#00695C',
-  },
-  resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 8,
-    backgroundColor: '#E3F2FD',
-  },
-  resultsText: {
-    fontSize: 12,
-    color: '#1976D2',
-    fontWeight: '600',
-  },
-  clearButton: {
-    fontSize: 12,
-    color: '#1976D2',
-    textDecorationLine: 'underline',
-  },
-  recommendationContainer: {
-    padding: 12,
-    backgroundColor: '#FFF3E0',
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
-    marginHorizontal: 8,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  recommendationLabel: {
-    fontSize: 12,
-    color: '#E65100',
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  recommendationText: {
-    fontSize: 14,
-    color: '#424242',
-    lineHeight: 20,
-  },
-  listContent: {
-    paddingBottom: 8,
-    paddingHorizontal: 4,
-  },
-  searchInfoContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#E8F5E9',
-    borderBottomWidth: 1,
-    borderBottomColor: '#C8E6C9',
-  },
-  searchInfoContent: {
-    flex: 1,
-  },
-  searchQueryText: {
-    fontSize: 12,
-    color: '#2E7D32',
-    marginBottom: 2,
-  },
-  searchQueryValue: {
-    fontWeight: '600',
-    color: '#1B5E20',
-  },
-  searchCategoryText: {
-    fontSize: 12,
-    color: '#2E7D32',
-  },
-  searchCategoryValue: {
-    fontWeight: '600',
-    color: '#1B5E20',
-  },
-  clearSearchInfo: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  clearSearchInfoText: {
-    fontSize: 16,
-    color: '#4CAF50',
-    fontWeight: 'bold',
-  },
+// Los estilos ahora vienen del sistema de temas
+// Solo definimos estilos específicos si son necesarios
+const localStyles = StyleSheet.create({
+  // Estilos específicos del RetailScreen si son necesarios
 });

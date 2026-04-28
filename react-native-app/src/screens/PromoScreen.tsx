@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   ScrollView,
   Dimensions,
-  ActivityIndicator,
   Image,
 } from 'react-native';
 import { CloudApi } from '@/services/CloudApi';
 import { useAppStore } from '@/stores/useAppStore';
+import { useTheme } from '@/contexts/ThemeContext';
+import { createStyles, GlobalStyles } from '@/theme/styles';
+import { Icon } from '@/components/ui/Icon';
 import type { Promotion, PromoVideo } from '@/types';
 
 const { width } = Dimensions.get('window');
@@ -20,8 +21,10 @@ export const PromoScreen: React.FC = () => {
   const [videos, setVideos] = useState<PromoVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const { theme } = useTheme();
+  const themeStyles = createStyles(theme);
   
-  const { promoTemplate, setPromoTemplate, setCurrentMode } = useAppStore();
+  const { setCurrentMode } = useAppStore();
 
   useEffect(() => {
     loadPromotions();
@@ -43,127 +46,84 @@ export const PromoScreen: React.FC = () => {
     }
   };
 
-  const toggleTemplate = () => {
-    setPromoTemplate(promoTemplate === 'video' ? 'carousel' : 'video');
-  };
-
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#FF5722" />
-        <Text style={styles.loadingText}>Cargando promociones...</Text>
-      </View>
-    );
-  }
-
-  if (promoTemplate === 'video') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => setCurrentMode('menu')} activeOpacity={0.7}>
-            <Text style={styles.backButton}>← Menu</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Promociones - Video</Text>
-          <TouchableOpacity style={styles.templateButton} onPress={toggleTemplate}>
-            <Text style={styles.templateButtonText}>⊞ Carrusel</Text>
-          </TouchableOpacity>
-        </View>
-
-        {videos.length > 0 && (
-          <View style={styles.videoContainer}>
-            <Image
-              source={{ uri: videos[currentVideoIndex].thumbnailUrl }}
-              style={styles.video}
-              resizeMode="cover"
-            />
-            <View style={styles.playOverlay}>
-              <Text style={styles.playIcon}>▶</Text>
-            </View>
-
-            <View style={styles.videoInfo}>
-              <Text style={styles.videoTitle}>
-                {videos[currentVideoIndex].title}
-              </Text>
-              <Text style={styles.videoDescription}>
-                {videos[currentVideoIndex].description}
-              </Text>
-              <Text style={styles.videoDuration}>
-                Duracion: {videos[currentVideoIndex].duration}s
-              </Text>
-            </View>
-            
-            <View style={styles.videoControls}>
-              <TouchableOpacity
-                style={[styles.navButton, currentVideoIndex === 0 && styles.navButtonDisabled]}
-                onPress={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
-                disabled={currentVideoIndex === 0}
-              >
-                <Text style={styles.navButtonText}>← Anterior</Text>
-              </TouchableOpacity>
-              
-              <Text style={styles.videoCounter}>
-                {currentVideoIndex + 1} / {videos.length}
-              </Text>
-              
-              <TouchableOpacity
-                style={[styles.navButton, currentVideoIndex === videos.length - 1 && styles.navButtonDisabled]}
-                onPress={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
-                disabled={currentVideoIndex === videos.length - 1}
-              >
-                <Text style={styles.navButtonText}>Siguiente →</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+      <View style={[themeStyles.container, GlobalStyles.center]}>
+        <Icon name="loading" size="xl" color={theme.colors.primary} />
+        <Text style={[themeStyles.body, { marginTop: 12 }]}>Cargando...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[themeStyles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Header minimalista */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 }}>
         <TouchableOpacity onPress={() => setCurrentMode('menu')} activeOpacity={0.7}>
-          <Text style={styles.backButton}>← Menu</Text>
+          <Icon name="chevronLeft" size="lg" color={theme.colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>Promociones - Carrusel</Text>
-        <TouchableOpacity style={styles.templateButton} onPress={toggleTemplate}>
-          <Text style={styles.templateButtonText}>▶ Video</Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1 }} />
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      {/* Video destacado */}
+      {videos.length > 0 && (
+        <View style={{ backgroundColor: '#000' }}>
+          <Image
+            source={{ uri: videos[currentVideoIndex].thumbnailUrl }}
+            style={{ width, height: width * (9 / 16) }}
+            resizeMode="cover"
+          />
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ fontSize: 36, color: 'rgba(255,255,255,0.8)' }}>▶</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Info video */}
+      {videos.length > 0 && (
+        <View style={{ padding: 12, flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.onSurface }}>{videos[currentVideoIndex].title}</Text>
+            <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>{videos[currentVideoIndex].description}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              onPress={() => setCurrentVideoIndex(Math.max(0, currentVideoIndex - 1))}
+              disabled={currentVideoIndex === 0}
+              style={{ opacity: currentVideoIndex === 0 ? 0.3 : 1, padding: 6 }}
+            >
+              <Icon name="chevronLeft" size="sm" color={theme.colors.primary} />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, marginHorizontal: 4 }}>
+              {currentVideoIndex + 1}/{videos.length}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setCurrentVideoIndex(Math.min(videos.length - 1, currentVideoIndex + 1))}
+              disabled={currentVideoIndex === videos.length - 1}
+              style={{ opacity: currentVideoIndex === videos.length - 1 ? 0.3 : 1, padding: 6 }}
+            >
+              <Icon name="chevronRight" size="sm" color={theme.colors.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Promociones */}
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         {promotions.map((promo) => (
-          <View key={promo.id} style={styles.promoCard}>
-            <View style={styles.promoHeader}>
-              <Text style={styles.promoTitle}>{promo.title}</Text>
-              <View style={styles.discountBadge}>
-                <Text style={styles.discountText}>{promo.discount}% OFF</Text>
+          <View key={promo.id} style={{ marginHorizontal: 12, marginBottom: 10, padding: 12, backgroundColor: theme.colors.surface, borderRadius: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: theme.colors.onSurface }}>{promo.title}</Text>
+              <View style={{ backgroundColor: theme.colors.primary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
+                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>{promo.discount}% OFF</Text>
               </View>
             </View>
-            
-            <Text style={styles.promoDescription}>{promo.description}</Text>
-            
-            <View style={styles.promoDates}>
-              <Text style={styles.dateText}>
-                Válido del {new Date(promo.startDate).toLocaleDateString()} 
-                {' al '} 
-                {new Date(promo.endDate).toLocaleDateString()}
-              </Text>
-            </View>
-            
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.productsScroll}
-            >
+            <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>{promo.description}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {promo.products.map((product) => (
-                <View key={product.id} style={styles.miniProductCard}>
-                  <Text style={styles.miniProductName} numberOfLines={2}>
-                    {product.name}
-                  </Text>
-                  <Text style={styles.miniProductPrice}>
-                    ${product.price.toLocaleString()}
-                  </Text>
+                <View key={product.id} style={{ width: 80, padding: 6, marginRight: 6, backgroundColor: theme.colors.background, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '600', color: theme.colors.onSurface }} numberOfLines={2}>{product.name}</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.primary, marginTop: 2 }}>${product.price.toLocaleString()}</Text>
                 </View>
               ))}
             </ScrollView>
@@ -174,189 +134,4 @@ export const PromoScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  backButton: {
-    fontSize: 14,
-    color: '#FF5722',
-    fontWeight: '600',
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#212121',
-  },
-  templateButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: '#FF5722',
-    borderRadius: 16,
-  },
-  templateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#757575',
-  },
-  videoContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  video: {
-    width: width,
-    height: width * (9 / 16),
-  },
-  playOverlay: {
-    position: 'absolute',
-    top: 60,
-    left: 0,
-    right: 0,
-    height: width * (9 / 16),
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playIcon: {
-    fontSize: 48,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  videoInfo: {
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  videoTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#212121',
-    marginBottom: 4,
-  },
-  videoDescription: {
-    fontSize: 11,
-    color: '#757575',
-  },
-  videoDuration: {
-    fontSize: 10,
-    color: '#9E9E9E',
-    marginTop: 2,
-  },
-  videoControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  navButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#FF5722',
-    borderRadius: 16,
-  },
-  navButtonText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  navButtonDisabled: {
-    opacity: 0.4,
-  },
-  videoCounter: {
-    fontSize: 13,
-    color: '#757575',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  promoCard: {
-    backgroundColor: '#FFFFFF',
-    margin: 8,
-    borderRadius: 8,
-    padding: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  promoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  promoTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#212121',
-  },
-  discountBadge: {
-    backgroundColor: '#FF5722',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  discountText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  promoDescription: {
-    fontSize: 11,
-    color: '#757575',
-    marginBottom: 8,
-  },
-  promoDates: {
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-    marginBottom: 8,
-  },
-  dateText: {
-    fontSize: 10,
-    color: '#9E9E9E',
-  },
-  productsScroll: {
-    marginTop: 6,
-  },
-  miniProductCard: {
-    width: 90,
-    padding: 8,
-    marginRight: 8,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 6,
-  },
-  miniProductName: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 3,
-  },
-  miniProductPrice: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#FF5722',
-  },
-});
+// Estilos vienen del sistema de temas

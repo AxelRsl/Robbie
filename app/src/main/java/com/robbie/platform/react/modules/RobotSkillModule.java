@@ -9,7 +9,12 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.robbie.platform.agent.RobotActionHandler;
 
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.WritableArray;
+
 import org.json.JSONObject;
+
+import java.util.List;
 
 public class RobotSkillModule extends ReactContextBaseJavaModule {
     
@@ -24,6 +29,26 @@ public class RobotSkillModule extends ReactContextBaseJavaModule {
         return "RobotSkillModule";
     }
     
+    @ReactMethod
+    public void getMapPlaces(Promise promise) {
+        try {
+            RobotActionHandler actionHandler = RobotActionHandler.getInstance();
+            if (actionHandler == null) {
+                promise.resolve(Arguments.createArray());
+                return;
+            }
+            List<String> places = actionHandler.getMapPlaces();
+            WritableArray result = Arguments.createArray();
+            for (String place : places) {
+                result.pushString(place);
+            }
+            promise.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting map places", e);
+            promise.resolve(Arguments.createArray());
+        }
+    }
+
     @ReactMethod
     public void executeAction(String action, String paramsJson, Promise promise) {
         try {

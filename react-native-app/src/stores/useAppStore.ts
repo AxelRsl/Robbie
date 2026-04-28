@@ -40,7 +40,7 @@ export const useAppStore = create<AppState>((set) => ({
   retailTemplate: 'grid',
   menuTemplate: 'classic',
   promoTemplate: 'video',
-  currentMode: 'menu',
+  currentMode: 'home',
   searchQuery: '',
   selectedProduct: null,
   uiConfig: DEFAULT_UI_CONFIG,

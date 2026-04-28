@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
+import { HomeScreen } from '@/screens/HomeScreen';
 import { MenuScreen } from '@/screens/MenuScreen';
 import { RetailScreen } from '@/screens/RetailScreen';
 import { PromoScreen } from '@/screens/PromoScreen';
@@ -8,8 +9,9 @@ import { NavigationScreen } from '@/screens/NavigationScreen';
 import { ProductDetailModal } from '@/components/ProductDetailModal';
 import { CloudApi } from '@/services/CloudApi';
 import { useAppStore } from '@/stores/useAppStore';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
-export default function App() {
+function AppContent() {
   const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts } = useAppStore();
 
   useEffect(() => {
@@ -72,8 +74,10 @@ export default function App() {
       case 'config':
         return <ConfigScreen />;
       case 'menu':
-      default:
         return <MenuScreen />;
+      case 'home':
+      default:
+        return <HomeScreen />;
     }
   };
 
@@ -88,6 +92,14 @@ export default function App() {
         />
       )}
     </View>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

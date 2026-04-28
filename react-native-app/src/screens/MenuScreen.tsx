@@ -8,6 +8,9 @@ import {
 } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { CloudApi } from '@/services/CloudApi';
+import { useTheme } from '@/contexts/ThemeContext';
+import { createStyles, GlobalStyles } from '@/theme/styles';
+import { Icon } from '@/components/ui/Icon';
 
 interface MenuItem {
   id: string;
@@ -16,48 +19,55 @@ interface MenuItem {
   icon: string;
   color: string;
   screen: string;
+  serverTitle?: string;
+  serverDescription?: string;
 }
 
-// Menú principal con solo 3 opciones
+// Menú principal - títulos y descripciones vendrán del servidor
 const allMenuItems: MenuItem[] = [
   {
     id: 'retail',
-    title: 'Productos',
-    description: 'Catálogo de productos',
-    icon: '🛍️',
-    color: '#00695C',
+    title: 'Productos', // Fallback
+    description: 'Catálogo de productos', // Fallback
+    icon: 'shoppingCart',
+    color: '#E4027C', // Color primario del panel
     screen: 'Retail',
   },
   {
     id: 'promo',
-    title: 'Promociones',
-    description: 'Ofertas especiales',
-    icon: '🎬',
-    color: '#FF5722',
+    title: 'Promociones', // Fallback
+    description: 'Ofertas especiales', // Fallback
+    icon: 'sparkles',
+    color: '#00BFA5', // Color accent del panel
     screen: 'Promo',
   },
   {
     id: 'navigate',
-    title: 'Navegar',
-    description: 'Ir a ubicación',
-    icon: '🧭',
-    color: '#E4027C',
+    title: 'Navegar', // Fallback
+    description: 'Ir a ubicación', // Fallback
+    icon: 'navigation',
+    color: '#F472B6', // Rosa claro del panel
     screen: 'Navigate',
   },
   {
     id: 'search',
-    title: 'Buscar',
-    description: 'Búsqueda por voz',
-    icon: '🔍',
-    color: '#9C27B0',
+    title: 'Buscar', // Fallback
+    description: 'Búsqueda por voz', // Fallback
+    icon: 'search',
+    color: '#10B981', // Verde del panel
     screen: 'Search',
   },
 ];
 
 export const MenuScreen: React.FC = () => {
-  const { menuTemplate, setMenuTemplate, setCurrentMode, setUiConfig, startNavigation } = useAppStore();
+  const { setCurrentMode, setUiConfig } = useAppStore();
   const [menuItems, setMenuItems] = useState<MenuItem[]>(allMenuItems);
   const [loading, setLoading] = useState(true);
+  const { theme } = useTheme();
+  const styles = createStyles(theme);
+  
+  // Template fijo en moderno (sin botón de cambio)
+  const menuTemplate = 'modern';
 
   useEffect(() => {
     loadValidScreens();
@@ -94,14 +104,11 @@ export const MenuScreen: React.FC = () => {
     }
   };
 
-  const toggleTemplate = () => {
-    setMenuTemplate(menuTemplate === 'classic' ? 'modern' : 'classic');
-  };
+  // Template fijo - no se puede cambiar
 
   const handleMenuPress = (item: MenuItem) => {
     if (item.screen === 'Navigate') {
-      // Iniciar navegación de ejemplo
-      startNavigation('Sección de Electrónica', 5, 15);
+      setCurrentMode('navigating');
     } else {
       setCurrentMode(item.screen.toLowerCase());
     }
@@ -109,182 +116,47 @@ export const MenuScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Cargando menú...</Text>
+      <View style={[styles.container, GlobalStyles.center]}>
+        <Icon name="loading" size="xl" color={theme.colors.primary} />
+        <Text style={[styles.body, { marginTop: 16 }]}>Cargando...</Text>
       </View>
     );
   }
 
-  if (menuTemplate === 'classic') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Menú Principal</Text>
-          <TouchableOpacity style={styles.templateButton} onPress={toggleTemplate}>
-            <Text style={styles.templateButtonText}>⊞ Moderno</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.classicContainer}>
-          {menuItems.map((item: MenuItem) => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.classicButton, { backgroundColor: item.color }]}
-              onPress={() => handleMenuPress(item)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.classicIcon}>{item.icon}</Text>
-              <Text style={styles.classicTitle} numberOfLines={1}>{item.title}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    );
-  }
+  // Solo template moderno - minimalista
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Menú Principal</Text>
-        <TouchableOpacity style={styles.templateButton} onPress={toggleTemplate}>
-          <Text style={styles.templateButtonText}>☰ Clásico</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.modernContainer}>
-        {menuItems.map((item) => (
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Grid minimalista - 4 columnas, sin bordes, con margen generoso */}
+      <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-evenly', alignContent: 'center', paddingHorizontal: 24, paddingVertical: 24 }}>
+        {menuItems.map((item: MenuItem) => (
           <TouchableOpacity
             key={item.id}
-            style={styles.modernCard}
             onPress={() => handleMenuPress(item)}
             activeOpacity={0.7}
+            style={{
+              width: '22%',
+              aspectRatio: 1,
+              marginBottom: 20,
+              marginHorizontal: 4,
+              justifyContent: 'center',
+              alignItems: 'center',
+              backgroundColor: 'transparent',
+            }}
           >
-            <View style={[styles.modernIconContainer, { backgroundColor: item.color }]}>
-              <Text style={styles.modernIcon}>{item.icon}</Text>
-            </View>
-            <View style={styles.modernContent}>
-              <Text style={styles.modernTitle}>{item.title}</Text>
-              <Text style={styles.modernDescription}>{item.description}</Text>
-            </View>
-            <Text style={styles.modernArrow}>→</Text>
+            <Icon name={item.icon} size="lg" color={item.color} />
+            <Text style={{ fontSize: 9, fontWeight: '600', color: theme.colors.onSurface, marginTop: 6, textAlign: 'center' }} numberOfLines={1}>
+              {item.title}
+            </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#757575',
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#212121',
-  },
-  templateButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#9C27B0',
-    borderRadius: 16,
-  },
-  templateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  classicContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 8,
-    justifyContent: 'space-between',
-    alignContent: 'center',
-  },
-  classicButton: {
-    width: '23.5%',
-    aspectRatio: 1,
-    marginVertical: 4,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  classicIcon: {
-    fontSize: 28,
-    marginBottom: 4,
-  },
-  classicTitle: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  modernContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  modernCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  modernIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  modernIcon: {
-    fontSize: 32,
-  },
-  modernContent: {
-    flex: 1,
-  },
-  modernTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#212121',
-    marginBottom: 4,
-  },
-  modernDescription: {
-    fontSize: 13,
-    color: '#757575',
-  },
-  modernArrow: {
-    fontSize: 24,
-    color: '#BDBDBD',
-  },
+// Los estilos ahora vienen del sistema de temas
+// Solo definimos estilos específicos de esta pantalla
+const localStyles = StyleSheet.create({
+  // Estilos específicos del MenuScreen si son necesarios
 });

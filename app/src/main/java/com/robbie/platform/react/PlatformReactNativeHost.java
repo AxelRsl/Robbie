@@ -16,6 +16,7 @@ import com.robbie.platform.react.modules.RobbieConfigModule;
 import com.robbie.platform.react.modules.LedModule;
 import com.robbie.platform.react.modules.ProductSearchModule;
 import com.robbie.platform.react.modules.TourMediaModule;
+import com.oblador.vectoricons.VectorIconsPackage;
 
 import com.facebook.react.ReactNativeHost;
 import com.facebook.react.ReactPackage;
@@ -54,6 +55,9 @@ public class PlatformReactNativeHost extends ReactNativeHost {
         packages.add(new RNCSliderPackage());
         packages.add(new RNFSPackage());
         packages.add(new RNGestureHandlerPackage());
+        
+        // React Native Vector Icons
+        packages.add(new VectorIconsPackage());
         
         
         // Módulos nativos para aplicación retail
