@@ -54,6 +54,7 @@ public class RobbieRetailActivity extends EveActivity {
     private PageAgent pageAgent;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private RobbieConfig robbieConfig;
+    private String lastUserQuestion = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -214,6 +215,9 @@ public class RobbieRetailActivity extends EveActivity {
 
                 Log.i(TAG, "[ASR] Transcripcion final: " + text);
 
+                // Guardamos el texto bruto final, independientemente del wake word
+                lastUserQuestion = text;
+
                 // Detectar wake word "Robbie" y variantes
                 String lower = text.toLowerCase();
                 Log.d(TAG, "[ASR] Buscando wake word en: '" + lower + "'");
@@ -229,11 +233,15 @@ public class RobbieRetailActivity extends EveActivity {
                         AgentCore.INSTANCE.tts("Si? En que te puedo ayudar?", 10000, null);
                     } else {
                         Log.i(TAG, "[ASR] Wake word + comando detectado - query: '" + command + "'");
+                        // Refinar la pregunta capturada a solo el comando para el log
+                        lastUserQuestion = command;
                         AgentCore.INSTANCE.query(command);
                     }
                     return true;
                 } else {
                     Log.w(TAG, "[ASR] No wake word detectado, ignorando: '" + text + "'");
+                    // En modo wake-free, AgentOS podría responder de todas formas aunque devolvamos true.
+                    // Así que mantenemos lastUserQuestion en caso de que AgentOS emita un TTS.
                     return true; // Suprimir - no hay wake word
                 }
             }
@@ -243,6 +251,13 @@ public class RobbieRetailActivity extends EveActivity {
                 Log.d(TAG, "[TTS] Recibido - texto: '" + transcription.getText() + "', final: " + transcription.getFinal());
                 if (transcription.getFinal()) {
                     Log.i(TAG, "[TTS] Respuesta final del bot: " + transcription.getText());
+                    
+                    if (lastUserQuestion != null && !lastUserQuestion.isEmpty()) {
+                        com.robbie.data.server.VoiceReportHandler.logInteraction(
+                            "Robbie", lastUserQuestion, transcription.getText()
+                        );
+                        lastUserQuestion = "";
+                    }
                 }
                 return false; // Dejar que el sistema muestre respuestas del bot
             }
