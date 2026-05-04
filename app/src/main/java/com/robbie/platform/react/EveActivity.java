@@ -20,6 +20,7 @@ import com.robbie.platform.agent.RobbieAgentBridge;
 import com.robbie.platform.agent.RobotActionHandler;
 import com.robbie.platform.retail.Product;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 
 /**
@@ -39,6 +40,7 @@ import java.util.List;
 public class EveActivity extends ReactActivity {
 
     private static final String TAG = "EveActivity";
+    private static WeakReference<EveActivity> currentInstance;
 
     private RobbieAgentBridge agentBridge;
     private RobotActionHandler actionHandler;
@@ -52,6 +54,7 @@ public class EveActivity extends ReactActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        currentInstance = new WeakReference<>(this);
         actionHandler = new RobotActionHandler(this);
         agentBridge = new RobbieAgentBridge();
 
@@ -68,6 +71,9 @@ public class EveActivity extends ReactActivity {
 
         // Register this activity for video dialog display during tours
         com.robbie.core.media.TourMediaPlayer.getInstance().setCurrentActivity(this);
+
+        // Register activity with animation manager so it can reveal the system face
+        actionHandler.registerActivityForFaceReveal(this);
     }
 
     @Override
@@ -352,6 +358,19 @@ public class EveActivity extends ReactActivity {
         } catch (Exception e) {
             Log.w(TAG, "Could not emit mode switch event", e);
         }
+    }
+
+    /**
+     * Emit an emotion event to React Native from an external source (e.g. AvatarFaceHandler HTTP API).
+     * This triggers the FaceOverlay component to show the 2D face animation.
+     */
+    public static void emitEmotionFromExternal(String emotion) {
+        EveActivity instance = currentInstance != null ? currentInstance.get() : null;
+        if (instance == null) {
+            Log.w(TAG, "No EveActivity instance available to emit emotion event");
+            return;
+        }
+        instance.emitEmotionEvent(emotion, "");
     }
 
     public static void launch(Activity fromActivity) {

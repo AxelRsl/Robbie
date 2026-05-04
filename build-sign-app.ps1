@@ -11,9 +11,53 @@ $UnsignedApk = "$OutputDir\app-$BuildType-unsigned.apk"
 $AlignedApk = "$OutputDir\app-$BuildType-unsigned-aligned.apk"
 $FinalApk = "$OutputDir\$AppName-$BuildType-signed.apk"
 
+function Resolve-JavaHome {
+    if ($env:JAVA_HOME) {
+        $javaExe = Join-Path $env:JAVA_HOME "bin\java.exe"
+        if (Test-Path $javaExe) {
+            return $env:JAVA_HOME.TrimEnd("\")
+        }
+        Write-Host "  JAVA_HOME actual invalido: $env:JAVA_HOME" -ForegroundColor Yellow
+    }
+
+    $javaCandidates = @()
+
+    try {
+        $javaCommand = Get-Command java.exe -ErrorAction SilentlyContinue
+        if ($javaCommand -and $javaCommand.Source) {
+            $javaCandidates += (Split-Path (Split-Path $javaCommand.Source -Parent) -Parent)
+        }
+    } catch {}
+
+    $javaCandidates += @(
+        "C:\Program Files\Eclipse Adoptium\jdk-17.0.18.8-hotspot",
+        "C:\Program Files\Java\jdk-17",
+        "C:\Program Files\Android\Android Studio\jbr"
+    )
+
+    $javaCandidates = $javaCandidates | Where-Object { $_ } | Select-Object -Unique
+    foreach ($candidate in $javaCandidates) {
+        $javaExe = Join-Path $candidate "bin\java.exe"
+        if (Test-Path $javaExe) {
+            return $candidate.TrimEnd("\")
+        }
+    }
+
+    return $null
+}
+
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  Build, Align & Sign - $AppName" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Paso 0: Verificando Java..." -ForegroundColor Green
+$resolvedJavaHome = Resolve-JavaHome
+if (-not $resolvedJavaHome) {
+    Write-Host "Error: No se encontro un JDK valido. Configura JAVA_HOME a un JDK con bin\java.exe" -ForegroundColor Red
+    exit 1
+}
+$env:JAVA_HOME = $resolvedJavaHome
+Write-Host "  JAVA_HOME activo: $env:JAVA_HOME" -ForegroundColor Green
 Write-Host ""
 
 if (-not (Test-Path $KeystoreFile)) {

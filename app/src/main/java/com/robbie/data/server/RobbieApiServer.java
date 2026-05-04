@@ -45,6 +45,7 @@ public class RobbieApiServer extends NanoHTTPD {
     private KnowledgeDocumentHandler documentHandler;
     private VoiceReportHandler voiceReportHandler;
     private SceneProjectHandler sceneProjectHandler;
+    private AvatarFaceHandler avatarFaceHandler;
 
     public RobbieApiServer(Context context) {
         this(context, DEFAULT_PORT);
@@ -102,6 +103,7 @@ public class RobbieApiServer extends NanoHTTPD {
             documentHandler = new KnowledgeDocumentHandler(db, gson);
             voiceReportHandler = new VoiceReportHandler(db, gson);
             sceneProjectHandler = new SceneProjectHandler(db, gson);
+            avatarFaceHandler = new AvatarFaceHandler(context, db, gson);
             configHandler.setOnPersonaChangedListener(persona -> {
                 // Cuando la persona cambia via el panel, actualizar AgentOS en tiempo real
                 try {
@@ -212,6 +214,8 @@ public class RobbieApiServer extends NanoHTTPD {
                 return documentHandler.handle(method, partsList, session);
             case "scene-projects":
                 return sceneProjectHandler.handle(method, partsList, session);
+            case "avatar-face":
+                return avatarFaceHandler.handle(method, partsList, session);
             case "health":
                 return handleHealth();
             default:

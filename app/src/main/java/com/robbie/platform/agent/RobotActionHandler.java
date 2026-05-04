@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.robbie.core.animation.ProceduralAnimationManager;
 import com.robbie.core.hardware.LedController;
 import com.robbie.core.navigation.TourExecutor;
 import com.robbie.RobotApp;
@@ -60,6 +61,7 @@ public class RobotActionHandler {
     private PersonListener personListener;
     private boolean isNavigating = false;
     private final List<String> mapPlaces = new ArrayList<>();
+    private final ProceduralAnimationManager animationManager;
 
     private IAgentBridge agentBridge;
     private ActionResultCallback resultCallback;
@@ -77,11 +79,43 @@ public class RobotActionHandler {
         void onLedEvent(String eventType, String data);
         void onModeSwitch(String mode);
     }
+    
+
 
     public RobotActionHandler(android.content.Context context) {
         this.context = context.getApplicationContext();
         this.robbieRecommendationEngine = new RobbieRecommendationEngine();
+        this.animationManager = ProceduralAnimationManager.getInstance(this.context);
         instance = this;
+    }
+
+    /**
+     * Register the current Activity so the animation manager can temporarily
+     * send it to background to reveal the system's 2D animated face.
+     */
+    public void registerActivityForFaceReveal(android.app.Activity activity) {
+        animationManager.setActivity(activity);
+    }
+
+    /**
+     * Get the animation manager for direct access (e.g., from AvatarFaceHandler).
+     */
+    public ProceduralAnimationManager getAnimationManager() {
+        return animationManager;
+    }
+
+    private void displayProceduralEmotion(String emotion) {
+        ProceduralAnimationManager.Emotion resolvedEmotion;
+        try {
+            resolvedEmotion = ProceduralAnimationManager.Emotion.valueOf(emotion.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            resolvedEmotion = ProceduralAnimationManager.Emotion.NEUTRAL;
+        }
+
+        // Physical head movement only - the 2D face overlay is handled by React Native's FaceOverlay component
+        // which listens to the onEmotionAction event emitted by EveActivity
+        animationManager.playExpression(resolvedEmotion);
+        Log.d(TAG, "Playing head animation for emotion: " + resolvedEmotion.value);
     }
 
     public static RobotActionHandler getInstance() {
@@ -150,6 +184,7 @@ public class RobotActionHandler {
     private boolean handleEmotion(String emotion, Bundle params) {
         String sentence = params != null ? params.getString("sentence", "") : "";
         if (resultCallback != null) resultCallback.onEmotionAction(emotion, sentence);
+        mainHandler.post(() -> displayProceduralEmotion(emotion));
         if (!sentence.isEmpty() && agentBridge != null) {
             agentBridge.tts(sentence, 180000);
         }

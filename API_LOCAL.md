@@ -73,6 +73,37 @@ Respuesta:
 
 ---
 
+### Avatar Face / HeadService
+
+Controla el modo de avatar facial nativo de OrionStar `HeadService`, que es el que genera la salida visual más realista basada en datos faciales y no sólo en MP4s estáticos.
+
+#### Ver estado
+```
+GET /api/avatar-face/status
+```
+
+#### Activar avatar facial
+```
+POST /api/avatar-face/enable
+```
+
+#### Desactivar avatar facial
+```
+POST /api/avatar-face/disable
+```
+
+#### Iniciar grabación de face data
+```
+POST /api/avatar-face/record/start
+```
+
+#### Detener grabación de face data
+```
+POST /api/avatar-face/record/stop
+```
+
+---
+
 ### Products
 
 #### Listar todos los productos

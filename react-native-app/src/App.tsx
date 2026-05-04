@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import FaceOverlay from '@/components/FaceOverlay';
 import { View, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { MenuScreen } from '@/screens/MenuScreen';
@@ -91,6 +92,7 @@ function AppContent() {
           onClose={() => setSelectedProduct(null)}
         />
       )}
+      <FaceOverlay />
     </View>
   );
 }
