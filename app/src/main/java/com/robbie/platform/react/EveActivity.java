@@ -373,6 +373,32 @@ public class EveActivity extends ReactActivity {
         instance.emitEmotionEvent(emotion, "");
     }
 
+    /**
+     * Send text to the AgentOS as if the user said it. Used for TTS scene function commands.
+     */
+    public static void sendAgentQueryFromExternal(String text) {
+        EveActivity instance = currentInstance != null ? currentInstance.get() : null;
+        if (instance == null) {
+            Log.w(TAG, "No EveActivity instance available to send agent query");
+            return;
+        }
+        if (instance.agentBridge != null && instance.agentBridge.isReady()) {
+            Log.i(TAG, "Sending agent query from scene function: " + text);
+            instance.agentBridge.query(text);
+        } else {
+            Log.w(TAG, "Agent bridge not ready for query: " + text);
+        }
+    }
+
+    public static void emitSceneReloadFromExternal() {
+        EveActivity instance = currentInstance != null ? currentInstance.get() : null;
+        if (instance == null) {
+            Log.w(TAG, "No EveActivity instance available to emit scene reload");
+            return;
+        }
+        instance.emitModeSwitchEvent("menu");
+    }
+
     public static void launch(Activity fromActivity) {
         Intent intent = new Intent(fromActivity, EveActivity.class);
         fromActivity.startActivity(intent);

@@ -103,6 +103,14 @@ public class RobbieApiServer extends NanoHTTPD {
             documentHandler = new KnowledgeDocumentHandler(db, gson);
             voiceReportHandler = new VoiceReportHandler(db, gson);
             sceneProjectHandler = new SceneProjectHandler(db, gson);
+            sceneProjectHandler.setOnSceneChangedListener(() -> {
+                // When a scene project is activated from the panel, reload the MenuScreen
+                com.robbie.platform.react.EveActivity.emitSceneReloadFromExternal();
+            });
+            sceneProjectHandler.setOnAgentQueryListener((text) -> {
+                // Send text to AgentOS from scene function TTS commands
+                com.robbie.platform.react.EveActivity.sendAgentQueryFromExternal(text);
+            });
             avatarFaceHandler = new AvatarFaceHandler(context, db, gson);
             configHandler.setOnPersonaChangedListener(persona -> {
                 // Cuando la persona cambia via el panel, actualizar AgentOS en tiempo real

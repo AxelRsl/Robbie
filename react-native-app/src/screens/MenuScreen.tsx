@@ -72,28 +72,43 @@ export const MenuScreen: React.FC = () => {
   const { theme } = useTheme();
   const styles = createStyles(theme);
 
-  useEffect(() => {
-    loadSceneProject();
-  }, []);
-
   const loadSceneProject = async () => {
     try {
-      if (!sceneProjectLoaded) {
-        const project = await CloudApi.getActiveSceneProject();
-        console.log('[MenuScreen] Proyecto de escena cargado:', project?.name || 'ninguno');
-        setSceneProject(project);
-      }
+      const project = await CloudApi.getActiveSceneProject();
+      console.log('[MenuScreen] Proyecto de escena cargado:', project?.name || 'ninguno', '- template:', project?.templateType);
+      setSceneProject(project);
     } catch (error) {
       console.error('[MenuScreen] Error cargando proyecto de escena:', error);
-      setSceneProject(null);
+      if (!sceneProjectLoaded) setSceneProject(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFunctionPress = (fn: SceneFunction) => {
+  useEffect(() => {
+    loadSceneProject();
+  }, []);
+
+  const handleFunctionPress = async (fn: SceneFunction) => {
     const command = fn.activationCommand;
     console.log('[MenuScreen] Funcion presionada:', fn.name, '- comando:', command);
+
+    // TTS commands: send text to AgentOS and stay on menu
+    if (command.startsWith('tts:')) {
+      const text = command.substring(4).trim();
+      console.log('[MenuScreen] Enviando comando TTS al agente:', text);
+      try {
+        await fetch('http://127.0.0.1:8080/api/scene-projects/agent-query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+      } catch (error) {
+        console.error('[MenuScreen] Error enviando query al agente:', error);
+      }
+      return; // Stay on menu screen
+    }
+
     setCurrentMode(command);
   };
 

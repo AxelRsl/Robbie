@@ -42,6 +42,8 @@ public class SceneProjectEntity {
 
     private String backgroundImageUrl;
 
+    private String backgroundColor;
+
     private boolean isActive;
 
     private long createdAt;
@@ -56,6 +58,7 @@ public class SceneProjectEntity {
         this.titleImageUrl = "";
         this.templateType = "FUNCTIONAL_GRID";
         this.backgroundImageUrl = "";
+        this.backgroundColor = "#F5F5F5";
         this.isActive = false;
         this.createdAt = System.currentTimeMillis();
         this.updatedAt = System.currentTimeMillis();
@@ -64,7 +67,8 @@ public class SceneProjectEntity {
     public SceneProjectEntity(@NonNull String id, @NonNull String name,
                               @NonNull String titleType, String titleText,
                               String titleImageUrl, @NonNull String templateType,
-                              String backgroundImageUrl, boolean isActive,
+                              String backgroundImageUrl, String backgroundColor,
+                              boolean isActive,
                               long createdAt, long updatedAt) {
         this.id = id;
         this.name = name;
@@ -73,6 +77,7 @@ public class SceneProjectEntity {
         this.titleImageUrl = titleImageUrl;
         this.templateType = templateType;
         this.backgroundImageUrl = backgroundImageUrl;
+        this.backgroundColor = backgroundColor != null ? backgroundColor : "#F5F5F5";
         this.isActive = isActive;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -85,6 +90,7 @@ public class SceneProjectEntity {
     public String getTitleImageUrl() { return titleImageUrl; }
     @NonNull public String getTemplateType() { return templateType; }
     public String getBackgroundImageUrl() { return backgroundImageUrl; }
+    public String getBackgroundColor() { return backgroundColor; }
     public boolean isActive() { return isActive; }
     public long getCreatedAt() { return createdAt; }
     public long getUpdatedAt() { return updatedAt; }
@@ -96,6 +102,7 @@ public class SceneProjectEntity {
     public void setTitleImageUrl(String titleImageUrl) { this.titleImageUrl = titleImageUrl; }
     public void setTemplateType(@NonNull String templateType) { this.templateType = templateType; }
     public void setBackgroundImageUrl(String backgroundImageUrl) { this.backgroundImageUrl = backgroundImageUrl; }
+    public void setBackgroundColor(String backgroundColor) { this.backgroundColor = backgroundColor; }
     public void setActive(boolean active) { isActive = active; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
     public void setUpdatedAt(long updatedAt) { this.updatedAt = updatedAt; }

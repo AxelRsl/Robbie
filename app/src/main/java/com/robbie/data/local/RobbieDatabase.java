@@ -2,10 +2,13 @@ package com.robbie.data.local;
 
 import android.content.Context;
 
+import androidx.annotation.NonNull;
 import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 import androidx.room.TypeConverters;
+import androidx.room.migration.Migration;
+import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.robbie.data.local.converter.StringListConverter;
 import com.robbie.data.local.dao.AnimationDao;
@@ -33,7 +36,7 @@ import com.robbie.data.local.entity.TourStopEntity;
         SceneProjectEntity.class,
         SceneFunctionEntity.class
     },
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(StringListConverter.class)
@@ -49,6 +52,14 @@ public abstract class RobbieDatabase extends RoomDatabase {
     public abstract SceneProjectDao sceneProjectDao();
     public abstract SceneFunctionDao sceneFunctionDao();
     
+    // Migration 5→6: Add backgroundColor column to scene_projects
+    static final Migration MIGRATION_5_6 = new Migration(5, 6) {
+        @Override
+        public void migrate(@NonNull SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE scene_projects ADD COLUMN backgroundColor TEXT NOT NULL DEFAULT '#F5F5F5'");
+        }
+    };
+
     private static volatile RobbieDatabase INSTANCE = null;
     
     public static RobbieDatabase getInstance(Context context) {
@@ -60,6 +71,7 @@ public abstract class RobbieDatabase extends RoomDatabase {
                         RobbieDatabase.class,
                         DATABASE_NAME
                     )
+                    .addMigrations(MIGRATION_5_6)
                     .fallbackToDestructiveMigration()
                     .allowMainThreadQueries()
                     .build();
