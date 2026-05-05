@@ -60,15 +60,40 @@ $env:JAVA_HOME = $resolvedJavaHome
 Write-Host "  JAVA_HOME activo: $env:JAVA_HOME" -ForegroundColor Green
 Write-Host ""
 
-if (-not (Test-Path $KeystoreFile)) {
-    Write-Host "Error: Keystore no encontrado en: $KeystoreFile" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Para crear un keystore nuevo:" -ForegroundColor Yellow
-    Write-Host "  keytool -genkey -v -keystore release.keystore -alias release ``"
-    Write-Host "    -keyalg RSA -keysize 2048 -validity 10000"
+# Resolver keystore automaticamente si no se pasa o no existe
+if (-not $KeystoreFile -or -not (Test-Path $KeystoreFile)) {
+
+    Write-Host "Buscando keystore automaticamente..." -ForegroundColor Yellow
+
+    # Prioridad 1: robot-release.jsk
+    $robotKey = Join-Path $PSScriptRoot "robot-release.jks"
+    if (Test-Path $robotKey) {
+        $KeystoreFile = $robotKey
+    }
+
+    # Prioridad 2: release.keystore
+    elseif (Test-Path (Join-Path $PSScriptRoot "release.keystore")) {
+        $KeystoreFile = Join-Path $PSScriptRoot "release.keystore"
+    }
+
+    # Buscar cualquier otro keystore en el proyecto
+    else {
+        $found = Get-ChildItem $PSScriptRoot -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+            $_.Extension -in ".keystore", ".jks", ".jsk"
+        } | Select-Object -First 1
+        if ($found) {
+            $KeystoreFile = $found.FullName
+        }
+    }
+}
+
+# Validación final
+if (-not $KeystoreFile -or -not (Test-Path $KeystoreFile)) {
+    Write-Host "Error: No se encontro ningun keystore (.keystore o .jks)" -ForegroundColor Red
     exit 1
 }
 
+Write-Host "Usando keystore: $KeystoreFile" -ForegroundColor Green
 Write-Host "Paso 1: Limpiando proyecto..." -ForegroundColor Green
 & "$PSScriptRoot\gradlew.bat" clean
 
