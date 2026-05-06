@@ -814,15 +814,22 @@ public class RobotActionHandler {
     private void tryFollowVisiblePerson() {
         if (!robotApiConnected || robotApi == null || !faceTrackActive || isFollowing) return;
         try {
+            // Try complete face list first (best quality), then all faces within 3m
             List<Person> faces = PersonApi.getInstance().getCompleteFaceList();
             if (faces == null || faces.isEmpty()) {
-                faces = PersonApi.getInstance().getAllFaceList();
+                faces = PersonApi.getInstance().getAllFaceList(3);
             }
             if (faces != null && !faces.isEmpty()) {
-                Person person = faces.get(0);
-                int personId = person.getId();
+                // Pick the closest person for more natural tracking
+                Person best = faces.get(0);
+                for (Person p : faces) {
+                    if (p.getDistance() > 0 && p.getDistance() < best.getDistance()) {
+                        best = p;
+                    }
+                }
+                int personId = best.getId();
                 if (personId >= 0) {
-                    Log.d(TAG, "Person found (id=" + personId + "), starting focus follow");
+                    Log.d(TAG, "Person found (id=" + personId + ", dist=" + best.getDistance() + "m), starting focus follow");
                     doStartFocusFollow(personId);
                 }
             }
@@ -837,7 +844,7 @@ public class RobotActionHandler {
         currentFollowId = personId;
         try {
             int result = robotApi.startFocusFollow(
-                faceTrackReqId, personId, 1000L, 2.0f, true,
+                faceTrackReqId, personId, 8000L, 5.0f, true,
                 new ActionListener() {
                     @Override
                     public void onResult(int reqId, String result) {
@@ -845,7 +852,7 @@ public class RobotActionHandler {
                         isFollowing = false;
                         currentFollowId = -1;
                         if (faceTrackActive) {
-                            mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 1000);
+                            mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 500);
                         }
                     }
 
@@ -854,11 +861,40 @@ public class RobotActionHandler {
                         Log.w(TAG, "FocusFollow error: " + error);
                         isFollowing = false;
                         currentFollowId = -1;
+                        // Retry finding a new person after error
+                        if (faceTrackActive) {
+                            mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 500);
+                        }
                     }
 
                     @Override
                     public void onStatusUpdate(int reqId, String status) {
-                        Log.d(TAG, "FocusFollow: " + status);
+                        Log.d(TAG, "FocusFollow status: " + status);
+                        try {
+                            org.json.JSONObject json = new org.json.JSONObject(status);
+                            String statusStr = json.optString("status", "");
+                            if ("guest_lost".equalsIgnoreCase(statusStr)
+                                || String.valueOf(Definition.STATUS_GUEST_LOST).equals(statusStr)) {
+                                Log.i(TAG, "FocusFollow: target lost, stopping and retrying");
+                                isFollowing = false;
+                                currentFollowId = -1;
+                                try { robotApi.stopFocusFollow(faceTrackReqId); } catch (Exception ignored) {}
+                                if (faceTrackActive) {
+                                    mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 300);
+                                }
+                            }
+                        } catch (Exception e) {
+                            // Status might be plain text, check for known lost patterns
+                            if (status != null && (status.contains("lost") || status.contains("LOST"))) {
+                                Log.i(TAG, "FocusFollow: target lost (text), stopping and retrying");
+                                isFollowing = false;
+                                currentFollowId = -1;
+                                try { robotApi.stopFocusFollow(faceTrackReqId); } catch (Exception ignored) {}
+                                if (faceTrackActive) {
+                                    mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 300);
+                                }
+                            }
+                        }
                     }
                 });
             Log.d(TAG, "startFocusFollow(id=" + personId + ") result=" + result);
