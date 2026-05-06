@@ -92,9 +92,13 @@ public class VoiceReportHandler extends BaseHandler {
         newLog.put("answer", answer);
         newLog.put("resolved", true);
         
-        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        // Formato ISO 8601 completo
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault());
         newLog.put("timestamp", sdf.format(new Date()));
-        newLog.put("duration", "10s");
+        
+        // En un futuro se puede medir, por ahora lo dejamos en 5s en lugar de "10s" para no romper el tipo, o lo pasamos como numero. 
+        // Vamos a guardar un string para compatibilidad, o un numero de segundos. Lo dejare como 5.
+        newLog.put("duration", 5); 
 
         logs.add(0, newLog); // Insertar al principio
         
