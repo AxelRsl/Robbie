@@ -54,7 +54,6 @@ public class RobbieRetailActivity extends EveActivity {
     private PageAgent pageAgent;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private RobbieConfig robbieConfig;
-    private String lastUserQuestion = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -216,7 +215,7 @@ public class RobbieRetailActivity extends EveActivity {
                 Log.i(TAG, "[ASR] Transcripcion final: " + text);
 
                 // Guardamos el texto bruto final, independientemente del wake word
-                lastUserQuestion = text;
+                com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text);
 
                 // Detectar wake word "Robbie" y variantes
                 String lower = text.toLowerCase();
@@ -233,8 +232,8 @@ public class RobbieRetailActivity extends EveActivity {
                         AgentCore.INSTANCE.tts("Si? En que te puedo ayudar?", 10000, null);
                     } else {
                         Log.i(TAG, "[ASR] Wake word + comando detectado - query: '" + command + "'");
-                        // Refinar la pregunta capturada a solo el comando para el log
-                        lastUserQuestion = command;
+                        // Reiniciar el tracker con el query filtrado
+                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(command);
                         AgentCore.INSTANCE.query(command);
                     }
                     return true;
@@ -248,18 +247,14 @@ public class RobbieRetailActivity extends EveActivity {
 
             @Override
             public boolean onTTSResult(Transcription transcription) {
-                Log.d(TAG, "[TTS] Recibido - texto: '" + transcription.getText() + "', final: " + transcription.getFinal());
                 if (transcription.getFinal()) {
-                    Log.i(TAG, "[TTS] Respuesta final del bot: " + transcription.getText());
+                    Log.d(TAG, "Retail ASR/TTS final: " + transcription.getText());
                     
-                    if (lastUserQuestion != null && !lastUserQuestion.isEmpty()) {
-                        com.robbie.data.server.VoiceReportHandler.logInteraction(
-                            "Robbie", lastUserQuestion, transcription.getText()
-                        );
-                        lastUserQuestion = "";
-                    }
+                    com.robbie.platform.voice.VoiceInteractionTracker.getInstance().finishInteraction("Robbie Retail", transcription.getText());
+                    
+                    AgentCore.INSTANCE.setEnableWakeFree(true);
                 }
-                return false; // Dejar que el sistema muestre respuestas del bot
+                return false;
             }
         });
     }

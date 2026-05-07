@@ -1,7 +1,10 @@
 package com.robbie.data.server;
 
+import android.text.TextUtils;
 import android.util.Log;
 
+import com.ainirobot.coreservice.client.RobotApi;
+import com.ainirobot.coreservice.client.listener.CommandListener;
 import com.google.gson.Gson;
 import com.robbie.data.local.RobbieDatabase;
 
@@ -10,6 +13,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
@@ -31,6 +36,11 @@ public class RobotMapHandler extends BaseHandler {
             return jsonResponse(Response.Status.METHOD_NOT_ALLOWED, mapOf("error", "Only GET allowed"));
         }
 
+        // Handle /api/robot-maps/current
+        if (parts.size() >= 3 && "current".equals(parts.get(2))) {
+            return getCurrentMap();
+        }
+
         // Handle /api/robot-maps/{id}/image
         if (parts.size() >= 4 && "image".equals(parts.get(3))) {
             return getMapImage(parts.get(2));
@@ -42,6 +52,36 @@ public class RobotMapHandler extends BaseHandler {
         }
 
         return listMaps();
+    }
+
+    private Response getCurrentMap() {
+        final String[] mapName = {null};
+        final CountDownLatch latch = new CountDownLatch(1);
+
+        try {
+            RobotApi.getInstance().getMapName(0, new CommandListener() {
+                @Override
+                public void onResult(int result, String message) {
+                    if (!TextUtils.isEmpty(message)) {
+                        mapName[0] = message;
+                    }
+                    latch.countDown();
+                }
+            });
+            latch.await(3, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting current map name", e);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        if (mapName[0] != null) {
+            response.put("mapId", mapName[0]);
+            response.put("mapName", mapName[0]);
+        } else {
+            response.put("mapId", null);
+            response.put("mapName", null);
+        }
+        return jsonResponse(Response.Status.OK, response);
     }
 
     private Response listMaps() {

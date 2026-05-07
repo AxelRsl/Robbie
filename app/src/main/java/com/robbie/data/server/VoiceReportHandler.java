@@ -61,7 +61,7 @@ public class VoiceReportHandler extends BaseHandler {
     }
 
     // Método estático para registrar interacciones desde el Bridge
-    public static synchronized void logInteraction(String robotName, String question, String answer) {
+    public static synchronized void logInteraction(String robotName, String question, String answer, long durationSecs, boolean resolved, String userId) {
         File dir = new File(DIR);
         if (!dir.exists()) dir.mkdirs();
 
@@ -87,18 +87,18 @@ public class VoiceReportHandler extends BaseHandler {
         java.util.Map<String, Object> newLog = new java.util.HashMap<>();
         newLog.put("id", "log_" + System.currentTimeMillis());
         newLog.put("robot", robotName);
-        newLog.put("user", "Visitante");
+        newLog.put("user", userId);
         newLog.put("question", question);
         newLog.put("answer", answer);
-        newLog.put("resolved", true);
+        newLog.put("resolved", resolved);
         
         // Formato ISO 8601 completo
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault());
+        sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
         newLog.put("timestamp", sdf.format(new Date()));
         
-        // En un futuro se puede medir, por ahora lo dejamos en 5s en lugar de "10s" para no romper el tipo, o lo pasamos como numero. 
-        // Vamos a guardar un string para compatibilidad, o un numero de segundos. Lo dejare como 5.
-        newLog.put("duration", 5); 
+        // Duración real en segundos
+        newLog.put("duration", durationSecs); 
 
         logs.add(0, newLog); // Insertar al principio
         

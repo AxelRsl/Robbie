@@ -22,6 +22,10 @@ import com.robbie.core.hardware.LedController;
 import java.util.Arrays;
 import java.util.Collections;
 
+import com.ainirobot.coreservice.client.person.PersonApi;
+import com.ainirobot.coreservice.client.listener.Person;
+import java.util.List;
+
 /**
  * Implementacion del IAgentBridge para el Agent SDK de ainirobot.
  *
@@ -41,7 +45,6 @@ public class RobbieAgentBridge implements IAgentBridge {
     private ActionDispatchCallback actionCallback;
     private TranscriptionCallback transcriptionCallback;
     private boolean ready = false;
-    private String lastUserQuestion = "";
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isListeningLight = false;
     private final Runnable restoreDefaultLight = () -> LedController.getInstance().restoreDefault();
@@ -83,8 +86,8 @@ public class RobbieAgentBridge implements IAgentBridge {
                     Log.d(TAG, "ASR final: " + text);
 
                     if (!text.isEmpty()) {
-                        lastUserQuestion = text; // Guardar para cuando el robot responda
                         Log.d(TAG, "Sending to query: " + text);
+                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text);
                         AgentCore.INSTANCE.query(text);
                         if (transcriptionCallback != null) transcriptionCallback.onASRFinal(text);
                     }
@@ -96,13 +99,7 @@ public class RobbieAgentBridge implements IAgentBridge {
                     if (transcription.getFinal()) {
                         Log.d(TAG, "TTS final: " + transcription.getText());
                         
-                        // Si hay una pregunta pendiente, registramos la interacción
-                        if (!lastUserQuestion.isEmpty()) {
-                            com.robbie.data.server.VoiceReportHandler.logInteraction(
-                                "Robbie", lastUserQuestion, transcription.getText()
-                            );
-                            lastUserQuestion = ""; // Reset
-                        }
+                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().finishInteraction("Robbie", transcription.getText());
 
                         mainHandler.removeCallbacks(restoreDefaultLight);
                         mainHandler.postDelayed(restoreDefaultLight, 1000);
