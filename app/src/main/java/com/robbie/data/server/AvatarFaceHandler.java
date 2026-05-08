@@ -35,23 +35,15 @@ public class AvatarFaceHandler extends BaseHandler {
 
     private static final String TAG = "AvatarFaceHandler";
     private static final List<String> SUPPORTED_EMOTIONS = Arrays.asList(
-        "neutral",
-        "sceptic",
-        "sad",
-        "broken",
-        "tired",
-        "crazy",
-        "wink",
-        "surprised",
-        "angry",
-        "in_love",
+        "idle",
         "happy",
-        "denying",
-        "calm",
-        "confused",
-        "interested",
-        "afraid",
-        "disgusted"
+        "sad",
+        "thinking",
+        "listening",
+        "speaking",
+        "processing",
+        "sleeping",
+        "surprised"
     );
 
     private final ProceduralAnimationManager animationManager;
@@ -123,23 +115,15 @@ public class AvatarFaceHandler extends BaseHandler {
         Map<String, Object> result = new HashMap<>();
         result.put("connected", animationManager.isAvailable());
         result.put("presets", Arrays.asList(
-            preset("neutral", "neutral", "Estado neutro, ojos relajados"),
-            preset("sceptic", "sceptic", "Mirada escéptica, ojos entrecerrados"),
-            preset("sad", "sad", "Expresión triste, ojos caídos"),
-            preset("broken", "broken", "Ojos rotos en X, error o falla"),
-            preset("tired", "tired", "Ojos cansados, semicírculos abajo"),
-            preset("crazy", "crazy", "Ojos locos, X y espiral"),
-            preset("wink", "wink", "Guiño amigable"),
-            preset("surprised", "surprised", "Ojos abiertos de sorpresa"),
-            preset("angry", "angry", "Expresión de enojo, ojos rojos"),
-            preset("in_love", "in_love", "Ojos de corazón, enamorado"),
-            preset("happy", "happy", "Sonrisa feliz, ojos arqueados"),
-            preset("denying", "denying", "Negando, ojos en > <"),
-            preset("calm", "calm", "Estado calmado y sereno"),
-            preset("confused", "confused", "Expresión de confusión"),
-            preset("interested", "interested", "Atención e interés"),
-            preset("afraid", "afraid", "Expresión de miedo"),
-            preset("disgusted", "disgusted", "Expresión de disgusto")
+            preset("idle", "idle", "Descanso tranquilo, ojos relajados"),
+            preset("happy", "happy", "Feliz kawaii ^_^ con sparkles"),
+            preset("sad", "sad", "Ojitos caídos, expresión triste"),
+            preset("thinking", "thinking", "Pensando... un ojo más chico"),
+            preset("listening", "listening", "Atento, ojitos grandes y alertas"),
+            preset("speaking", "speaking", "Hablando, boca dinámica y blush"),
+            preset("processing", "processing", "Procesando con bouncing dots"),
+            preset("sleeping", "sleeping", "Dormidito con Zzz flotantes"),
+            preset("surprised", "surprised", "Sorpresa! Ojos enormes y burst")
         ));
         return jsonResponse(Response.Status.OK, result);
     }
@@ -202,15 +186,7 @@ public class AvatarFaceHandler extends BaseHandler {
     }
 
     private ProceduralAnimationManager.Emotion resolveEmotion(String emotionName) {
-        if (emotionName == null) {
-            return ProceduralAnimationManager.Emotion.NEUTRAL;
-        }
-
-        try {
-            return ProceduralAnimationManager.Emotion.valueOf(emotionName.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return ProceduralAnimationManager.Emotion.NEUTRAL;
-        }
+        return ProceduralAnimationManager.Emotion.fromString(emotionName);
     }
 
     private Response toggleAvatarMode(boolean enable) {

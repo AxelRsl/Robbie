@@ -105,12 +105,7 @@ public class RobotActionHandler {
     }
 
     private void displayProceduralEmotion(String emotion) {
-        ProceduralAnimationManager.Emotion resolvedEmotion;
-        try {
-            resolvedEmotion = ProceduralAnimationManager.Emotion.valueOf(emotion.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            resolvedEmotion = ProceduralAnimationManager.Emotion.NEUTRAL;
-        }
+        ProceduralAnimationManager.Emotion resolvedEmotion = ProceduralAnimationManager.Emotion.fromString(emotion);
 
         // Physical head movement only - the 2D face overlay is handled by React Native's FaceOverlay component
         // which listens to the onEmotionAction event emitted by EveActivity

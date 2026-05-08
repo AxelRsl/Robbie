@@ -25,23 +25,41 @@ public class ProceduralAnimationManager {
 
     private static final String TAG = "ProceduralAnimationMgr";
     
-    // Predefined emotions for procedural animation
+    // Kawaii mascot emotions (Dasai Mochi style)
     public enum Emotion {
+        IDLE("idle"),
         HAPPY("happy"),
         SAD("sad"),
-        ANGRY("angry"),
-        NEUTRAL("neutral"),
-        CONFUSED("confused"),
-        INTERESTED("interested"),
-        SURPRISED("surprised"),
-        AFRAID("afraid"),
-        DISGUSTED("disgusted"),
-        CALM("calm");
+        THINKING("thinking"),
+        LISTENING("listening"),
+        SPEAKING("speaking"),
+        PROCESSING("processing"),
+        SLEEPING("sleeping"),
+        SURPRISED("surprised");
         
         public final String value;
         
         Emotion(String value) {
             this.value = value;
+        }
+
+        /** Resolve from string with backward-compat aliases for old emotions */
+        public static Emotion fromString(String name) {
+            if (name == null) return IDLE;
+            switch (name.trim().toLowerCase()) {
+                case "idle": case "neutral": case "calm": return IDLE;
+                case "happy": case "in_love": return HAPPY;
+                case "sad": case "broken": return SAD;
+                case "thinking": case "confused": case "sceptic": return THINKING;
+                case "listening": case "interested": return LISTENING;
+                case "speaking": return SPEAKING;
+                case "processing": return PROCESSING;
+                case "sleeping": case "tired": case "sleepy": return SLEEPING;
+                case "surprised": case "afraid": case "angry": case "disgusted": return SURPRISED;
+                default:
+                    try { return Emotion.valueOf(name.trim().toUpperCase()); }
+                    catch (IllegalArgumentException e) { return IDLE; }
+            }
         }
     }
     
@@ -106,46 +124,64 @@ public class ProceduralAnimationManager {
         
         switch (emotion) {
             case HAPPY:
-                // Nod yes (up then down)
+                // Bouncy nod (kawaii energy)
                 executeHeadSequence(
-                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 0, -15, 300),
-                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 0, 30, 400),
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 300)
+                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 0, -12, 250),
+                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 0, 24, 300),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 350)
                 );
                 break;
             case SAD:
-                // Look down slowly
+                // Gentle droop down
                 executeHeadSequence(
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 25, 1000),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, -5, 20, 900),
                     new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 800)
                 );
                 break;
-            case ANGRY:
-                // Shake head no quickly
+            case THINKING:
+                // Tilt head to the side (curious)
                 executeHeadSequence(
-                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, -20, 0, 200),
-                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 40, 0, 400),
-                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, -40, 0, 400),
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 200)
-                );
-                break;
-            case CONFUSED:
-                // Tilt head to the side
-                executeHeadSequence(
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 15, -10, 600),
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, -15, -10, 600),
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 400)
-                );
-                break;
-            case INTERESTED:
-            case SURPRISED:
-                // Look up quickly
-                executeHeadSequence(
-                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, -20, 300),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 12, -8, 500),
                     new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 600)
                 );
                 break;
-            case NEUTRAL:
+            case LISTENING:
+                // Slight lean forward (attentive)
+                executeHeadSequence(
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, -10, 400),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 500)
+                );
+                break;
+            case SPEAKING:
+                // Small nod rhythm (conversational)
+                executeHeadSequence(
+                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 0, -8, 200),
+                    new HeadMove(Definition.JSON_HEAD_RELATIVE, Definition.JSON_HEAD_RELATIVE, 0, 16, 250),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 300)
+                );
+                break;
+            case PROCESSING:
+                // Stay still, slight down-look
+                executeHeadSequence(
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 5, 400),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 600)
+                );
+                break;
+            case SLEEPING:
+                // Slow droop and stay
+                executeHeadSequence(
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, -3, 25, 1200),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 1000)
+                );
+                break;
+            case SURPRISED:
+                // Quick pop up (shock)
+                executeHeadSequence(
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, -18, 200),
+                    new HeadMove(Definition.JSON_HEAD_ABSOLUTE, Definition.JSON_HEAD_ABSOLUTE, 0, 0, 500)
+                );
+                break;
+            case IDLE:
             default:
                 // Reset to center
                 executeHeadSequence(
@@ -166,12 +202,7 @@ public class ProceduralAnimationManager {
      * Play a custom procedural animation with speed and looping
      */
     public void playAnimation(String animationName, float speed, boolean loop) {
-        // Fallback to expressions
-        try {
-            playExpression(Emotion.valueOf(animationName.toUpperCase()));
-        } catch (IllegalArgumentException e) {
-            playExpression(Emotion.NEUTRAL);
-        }
+        playExpression(Emotion.fromString(animationName));
     }
     
     /**

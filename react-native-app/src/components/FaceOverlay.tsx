@@ -26,80 +26,72 @@ type EC = typeof D;
 const mk = (o: Partial<EC>): EC => ({ ...D, ...o });
 const OFF = { b1o: 0, b2o: 0 }; // hide bars
 
-// ─── 12 Emotions (1:1 with reference image) ───
+// ─── 9 Kawaii Emotions (Dasai Mochi style) ───
 const EM: Record<string, { L: EC; R: EC }> = {
-  // NEUTRAL: two vertical pills
-  neutral: {
-    L: mk({ b1o: 1, b1w: 55, b1h: 75, b1br: 24 }),
-    R: mk({ b1o: 1, b1w: 55, b1h: 75, b1br: 24 }),
+  // IDLE: tall rounded pill capsules (resting cute)
+  idle: {
+    L: mk({ b1o: 1, b1w: 50, b1h: 72, b1br: 25 }),
+    R: mk({ b1o: 1, b1w: 50, b1h: 72, b1br: 25 }),
   },
-  // SCEPTIC: two horizontal thin lines
-  sceptic: {
-    L: mk({ b1o: 1, b1w: 75, b1h: 16, b1br: 8 }),
-    R: mk({ b1o: 1, b1w: 75, b1h: 16, b1br: 8 }),
-  },
-  // SAD: tilted bars \  /
-  sad: {
-    L: mk({ b1o: 1, b1w: 50, b1h: 20, b1r: 35, b1br: 10 }),
-    R: mk({ b1o: 1, b1w: 50, b1h: 20, b1r: -35, b1br: 10 }),
-  },
-  // BROKEN: X X
-  broken: {
-    L: mk({ ...OFF, b1o: 1, b1w: 60, b1h: 14, b1r: 45, b1br: 7, b2o: 1, b2w: 60, b2h: 14, b2r: -45, b2br: 7 }),
-    R: mk({ ...OFF, b1o: 1, b1w: 60, b1h: 14, b1r: 45, b1br: 7, b2o: 1, b2w: 60, b2h: 14, b2r: -45, b2br: 7 }),
-  },
-  // TIRED: bottom arcs ∪ ∪ (solid filled)
-  tired: {
-    L: mk({ ...OFF, ao: 1, aw: 70, ah: 30, abrTL: 4, abrTR: 4, abrBL: 35, abrBR: 35 }),
-    R: mk({ ...OFF, ao: 1, aw: 70, ah: 30, abrTL: 4, abrTR: 4, abrBL: 35, abrBR: 35 }),
-  },
-  // CRAZY: X left, spiral (ring+dot) right
-  crazy: {
-    L: mk({ ...OFF, b1o: 1, b1w: 55, b1h: 14, b1r: 45, b1br: 7, b2o: 1, b2w: 55, b2h: 14, b2r: -45, b2br: 7 }),
-    R: mk({ ...OFF, ro: 1, rs: 58, rbw: 11, dto: 1 }),
-  },
-  // WINK: top arc left, spiral right
-  wink: {
-    L: mk({ ...OFF, ao: 1, aw: 70, ah: 30, abrTL: 35, abrTR: 35, abrBL: 4, abrBR: 4 }),
-    R: mk({ ...OFF, ro: 1, rs: 58, rbw: 11, dto: 1 }),
-  },
-  // SURPRISED: O O (rings)
-  surprised: {
-    L: mk({ ...OFF, ro: 1, rs: 62, rbw: 11 }),
-    R: mk({ ...OFF, ro: 1, rs: 62, rbw: 11 }),
-  },
-  // ANGRY: tilted bars \  / in RED
-  angry: {
-    L: mk({ b1o: 1, b1w: 65, b1h: 16, b1r: 30, b1br: 8, cr: 255, cg: 55, cb: 55 }),
-    R: mk({ b1o: 1, b1w: 65, b1h: 16, b1r: -30, b1br: 8, cr: 255, cg: 55, cb: 55 }),
-  },
-  // IN LOVE: hearts in PINK
-  in_love: {
-    L: mk({ ...OFF, ho: 1, cr: 255, cg: 100, cb: 200 }),
-    R: mk({ ...OFF, ho: 1, cr: 255, cg: 100, cb: 200 }),
-  },
-  // HAPPY: top arcs ∩ ∩ (solid filled)
+  // HAPPY: ^_^ kawaii arcs (top half-pills)
   happy: {
-    L: mk({ ...OFF, ao: 1, aw: 70, ah: 30, abrTL: 35, abrTR: 35, abrBL: 4, abrBR: 4 }),
-    R: mk({ ...OFF, ao: 1, aw: 70, ah: 30, abrTL: 35, abrTR: 35, abrBL: 4, abrBR: 4 }),
+    L: mk({ ...OFF, ao: 1, aw: 65, ah: 28, abrTL: 33, abrTR: 33, abrBL: 4, abrBR: 4 }),
+    R: mk({ ...OFF, ao: 1, aw: 65, ah: 28, abrTL: 33, abrTR: 33, abrBL: 4, abrBR: 4 }),
   },
-  // DENYING: > <
-  denying: {
-    L: mk({ ...OFF, b1o: 1, b1w: 42, b1h: 13, b1r: -30, b1br: 7, b1tx: 8, b1ty: -13,
-                     b2o: 1, b2w: 42, b2h: 13, b2r: 30, b2br: 7, b2tx: 8, b2ty: 13 }),
-    R: mk({ ...OFF, b1o: 1, b1w: 42, b1h: 13, b1r: 30, b1br: 7, b1tx: -8, b1ty: -13,
-                     b2o: 1, b2w: 42, b2h: 13, b2r: -30, b2br: 7, b2tx: -8, b2ty: 13 }),
+  // SAD: droopy smaller pills, slightly tilted inward
+  sad: {
+    L: mk({ b1o: 1, b1w: 44, b1h: 60, b1br: 22, b1r: 5 }),
+    R: mk({ b1o: 1, b1w: 44, b1h: 60, b1br: 22, b1r: -5 }),
+  },
+  // THINKING: asymmetric — one smaller, one normal (curious tilt)
+  thinking: {
+    L: mk({ b1o: 1, b1w: 38, b1h: 50, b1br: 19 }),
+    R: mk({ b1o: 1, b1w: 50, b1h: 72, b1br: 25 }),
+  },
+  // LISTENING: slightly wider, taller pills (alert and attentive)
+  listening: {
+    L: mk({ b1o: 1, b1w: 54, b1h: 78, b1br: 27 }),
+    R: mk({ b1o: 1, b1w: 54, b1h: 78, b1br: 27 }),
+  },
+  // SPEAKING: lively pills, slightly wider (engaged)
+  speaking: {
+    L: mk({ b1o: 1, b1w: 52, b1h: 68, b1br: 26 }),
+    R: mk({ b1o: 1, b1w: 52, b1h: 68, b1br: 26 }),
+  },
+  // PROCESSING: narrow focused pills
+  processing: {
+    L: mk({ b1o: 1, b1w: 40, b1h: 64, b1br: 20 }),
+    R: mk({ b1o: 1, b1w: 40, b1h: 64, b1br: 20 }),
+  },
+  // SLEEPING: relaxed crescent arcs (bottom half-pills = peaceful closed eyes)
+  sleeping: {
+    L: mk({ ...OFF, ao: 1, aw: 60, ah: 20, abrTL: 4, abrTR: 4, abrBL: 30, abrBR: 30 }),
+    R: mk({ ...OFF, ao: 1, aw: 60, ah: 20, abrTL: 4, abrTR: 4, abrBL: 30, abrBR: 30 }),
+  },
+  // SURPRISED: big round circles (cartoon shock)
+  surprised: {
+    L: mk({ ...OFF, ro: 1, rs: 70, rbw: 12 }),
+    R: mk({ ...OFF, ro: 1, rs: 70, rbw: 12 }),
   },
 };
 
-// Aliases for emotions from bot
-EM.suspicious = EM.sceptic;
-EM.sleepy = EM.tired;
-EM.confused = EM.crazy;
-EM.interested = EM.surprised;
-EM.calm = EM.happy;
+// Backward-compat aliases for old emotion names from bot
+EM.neutral = EM.idle;
+EM.calm = EM.idle;
+EM.sceptic = EM.thinking;
+EM.confused = EM.thinking;
+EM.suspicious = EM.thinking;
+EM.tired = EM.sleeping;
+EM.sleepy = EM.sleeping;
+EM.broken = EM.sad;
+EM.in_love = EM.happy;
+EM.wink = EM.happy;
+EM.denying = EM.sad;
+EM.angry = EM.surprised;
 EM.afraid = EM.surprised;
-EM.disgusted = EM.angry;
+EM.disgusted = EM.surprised;
+EM.interested = EM.listening;
+EM.crazy = EM.surprised;
 
 // ─── Build flat GSAP state ───
 const buildState = () => {
@@ -145,8 +137,8 @@ const FaceOverlay = () => {
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('onEmotionAction', (ev) => {
-      const emo = ev.emotion ? ev.emotion.toLowerCase().replace(/\s+/g, '_') : 'neutral';
-      const cfg = EM[emo] || EM.neutral;
+      const emo = ev.emotion ? ev.emotion.toLowerCase().replace(/\s+/g, '_') : 'idle';
+      const cfg = EM[emo] || EM.idle;
 
       setVisible(true);
       if (hideT.current) clearTimeout(hideT.current);
