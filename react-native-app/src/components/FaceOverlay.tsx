@@ -13,59 +13,59 @@ const mkMorph = (a: string, b: string): MorphFn => interpolate(a, b, { maxSegmen
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-// ─── Anchors (same as web) ───
-const A = { eyeL: { x: 162, y: 125 }, eyeR: { x: 238, y: 125 }, mouth: { x: 200, y: 176 } };
+// ─── Anchors (v2 — wider, bolder, more presence) ───
+const A = { eyeL: { x: 138, y: 122 }, eyeR: { x: 262, y: 122 }, mouth: { x: 200, y: 200 } };
 const CX = 200, CY = 150;
 
 // ─── SVG Paths (from paths.ts — identical to web) ───
 const EYE: Record<string, string> = {
-  idle:       "M -15 -24 C -15 -34 15 -34 15 -24 L 15 24 C 15 34 -15 34 -15 24 Z",
-  happy:      "M -20 8 C -20 -12 -8 -16 0 -16 C 8 -16 20 -12 20 8 C 12 5 -12 5 -20 8 Z",
-  sad:        "M -14 -20 C -14 -30 14 -30 14 -20 L 14 20 C 14 30 -14 30 -14 20 Z",
-  thinkingS:  "M -12 -18 C -12 -26 12 -26 12 -18 L 12 18 C 12 26 -12 26 -12 18 Z",
-  thinkingL:  "M -15 -24 C -15 -34 15 -34 15 -24 L 15 24 C 15 34 -15 34 -15 24 Z",
-  listening:  "M -17 -26 C -17 -36 17 -36 17 -26 L 17 26 C 17 36 -17 36 -17 26 Z",
-  speaking:   "M -16 -22 C -16 -32 16 -32 16 -22 L 16 22 C 16 32 -16 32 -16 22 Z",
-  processing: "M -12 -22 C -12 -30 12 -30 12 -22 L 12 22 C 12 30 -12 30 -12 22 Z",
-  sleeping:   "M -18 4 C -14 -8 14 -8 18 4 C 12 1 -12 1 -18 4 Z",
-  surprised:  "M -26 0 C -26 -28 26 -28 26 0 C 26 28 -26 28 -26 0 Z",
+  idle:       "M -21 -33 C -21 -47 21 -47 21 -33 L 21 33 C 21 47 -21 47 -21 33 Z",
+  happy:      "M -27 10 C -27 -16 -11 -22 0 -22 C 11 -22 27 -16 27 10 C 16 6 -16 6 -27 10 Z",
+  sad:        "M -19 -28 C -19 -42 19 -42 19 -28 L 19 28 C 19 42 -19 42 -19 28 Z",
+  thinkingS:  "M -16 -24 C -16 -36 16 -36 16 -24 L 16 24 C 16 36 -16 36 -16 24 Z",
+  thinkingL:  "M -21 -33 C -21 -47 21 -47 21 -33 L 21 33 C 21 47 -21 47 -21 33 Z",
+  listening:  "M -23 -36 C -23 -50 23 -50 23 -36 L 23 36 C 23 50 -23 50 -23 36 Z",
+  speaking:   "M -22 -30 C -22 -44 22 -44 22 -30 L 22 30 C 22 44 -22 44 -22 30 Z",
+  processing: "M -16 -30 C -16 -42 16 -42 16 -30 L 16 30 C 16 42 -16 42 -16 30 Z",
+  sleeping:   "M -24 5 C -19 -12 19 -12 24 5 C 16 1 -16 1 -24 5 Z",
+  surprised:  "M -35 0 C -35 -38 35 -38 35 0 C 35 38 -35 38 -35 0 Z",
 };
-const EYE_BLINK = "M -16 -2 C -16 -5 16 -5 16 -2 L 16 2 C 16 5 -16 5 -16 2 Z";
+const EYE_BLINK = "M -22 -3 C -22 -7 22 -7 22 -3 L 22 3 C 22 7 -22 7 -22 3 Z";
 
 const MOUTH: Record<string, string> = {
-  idle:       "M -10 0 C -6 0 6 0 10 0 C 6 6 -6 6 -10 0 Z",
-  happy:      "M -16 -1 C -10 -1 -5 5 0 5 C 5 5 10 -1 16 -1 C 12 9 -12 9 -16 -1 Z",
-  sad:        "M -9 3 C -5 3 5 3 9 3 C 5 -3 -5 -3 -9 3 Z",
-  thinking:   "M -8 1 C -4 -2 4 2 8 -1 C 5 4 -5 5 -8 1 Z",
-  listening:  "M -8 0 C -4 -1 4 -1 8 0 C 4 4 -4 4 -8 0 Z",
-  speaking:   "M -11 -2 C -6 -6 6 -6 11 -2 C 6 6 -6 6 -11 -2 Z",
-  processing: "M -5 0 C -5 -3 5 -3 5 0 C 5 3 -5 3 -5 0 Z",
-  sleeping:   "M -5 0 C -5 -4 5 -4 5 0 C 5 4 -5 4 -5 0 Z",
-  surprised:  "M -9 0 C -9 -9 9 -9 9 0 C 9 9 -9 9 -9 0 Z",
+  idle:       "M -14 -3 C -14 -7 -8 -9 0 -9 C 8 -9 14 -7 14 -3 C 14 3 8 8 0 8 C -8 8 -14 3 -14 -3 Z",
+  happy:      "M -22 -4 C -22 -10 -11 -12 0 -12 C 11 -12 22 -10 22 -4 C 22 6 14 14 0 14 C -14 14 -22 6 -22 -4 Z",
+  sad:        "M -11 -4 C -11 -7 -6 -7 0 -7 C 6 -7 11 -7 11 -4 C 11 0 6 5 0 5 C -6 5 -11 0 -11 -4 Z",
+  thinking:   "M -10 -3 C -10 -7 -4 -8 2 -8 C 7 -7 11 -6 11 -3 C 11 3 6 7 0 6 C -6 7 -10 3 -10 -3 Z",
+  listening:  "M -11 -4 C -11 -8 -6 -10 0 -10 C 6 -10 11 -8 11 -4 C 11 2 6 6 0 6 C -6 6 -11 2 -11 -4 Z",
+  speaking:   "M -15 -5 C -15 -11 -7 -14 0 -14 C 7 -14 15 -11 15 -5 C 15 4 8 11 0 11 C -8 11 -15 4 -15 -5 Z",
+  processing: "M -7 -4 C -7 -8 7 -8 7 -4 C 7 2 4 6 0 6 C -4 6 -7 2 -7 -4 Z",
+  sleeping:   "M -7 -4 C -7 -8 7 -8 7 -4 C 7 3 4 7 0 7 C -4 7 -7 3 -7 -4 Z",
+  surprised:  "M -14 -6 C -14 -14 14 -14 14 -6 C 14 6 8 14 0 14 C -8 14 -14 6 -14 -6 Z",
 };
-const MOUTH_SPEAK_OPEN = "M -13 -4 C -7 -10 7 -10 13 -4 C 7 8 -7 8 -13 -4 Z";
+const MOUTH_SPEAK_OPEN = "M -19 -7 C -19 -16 -8 -19 0 -19 C 8 -19 19 -16 19 -7 C 19 7 11 16 0 16 C -11 16 -19 7 -19 -7 Z";
 
 // ─── Emotion Poses ───
 interface Pose { eyeL: string; eyeR: string; mouth: string; headTilt: number; headNod: number; breathAmp: number; }
 const POSES: Record<string, Pose> = {
   idle:       { eyeL: EYE.idle,       eyeR: EYE.idle,       mouth: MOUTH.idle,       headTilt: 0,  headNod: 0,  breathAmp: 1   },
-  happy:      { eyeL: EYE.happy,      eyeR: EYE.happy,      mouth: MOUTH.happy,      headTilt: 2,  headNod:-4,  breathAmp: 1.4 },
-  sad:        { eyeL: EYE.sad,        eyeR: EYE.sad,        mouth: MOUTH.sad,        headTilt:-3,  headNod: 5,  breathAmp: 0.7 },
-  thinking:   { eyeL: EYE.thinkingS,  eyeR: EYE.thinkingL,  mouth: MOUTH.thinking,   headTilt: 5,  headNod:-1,  breathAmp: 0.8 },
-  listening:  { eyeL: EYE.listening,  eyeR: EYE.listening,  mouth: MOUTH.listening,  headTilt: 0,  headNod: 0,  breathAmp: 0.9 },
-  speaking:   { eyeL: EYE.speaking,   eyeR: EYE.speaking,   mouth: MOUTH.speaking,   headTilt: 1,  headNod:-1,  breathAmp: 1.1 },
-  processing: { eyeL: EYE.processing, eyeR: EYE.processing, mouth: MOUTH.processing, headTilt: 0,  headNod: 0,  breathAmp: 0.6 },
-  sleeping:   { eyeL: EYE.sleeping,   eyeR: EYE.sleeping,   mouth: MOUTH.sleeping,   headTilt:-3,  headNod: 8,  breathAmp: 1.8 },
-  surprised:  { eyeL: EYE.surprised,  eyeR: EYE.surprised,  mouth: MOUTH.surprised,  headTilt: 0,  headNod:-6,  breathAmp: 0.4 },
+  happy:      { eyeL: EYE.happy,      eyeR: EYE.happy,      mouth: MOUTH.happy,      headTilt: 3,  headNod:-6,  breathAmp: 1.6 },
+  sad:        { eyeL: EYE.sad,        eyeR: EYE.sad,        mouth: MOUTH.sad,        headTilt:-4,  headNod: 7,  breathAmp: 0.6 },
+  thinking:   { eyeL: EYE.thinkingS,  eyeR: EYE.thinkingL,  mouth: MOUTH.thinking,   headTilt: 7,  headNod:-2,  breathAmp: 0.7 },
+  listening:  { eyeL: EYE.listening,  eyeR: EYE.listening,  mouth: MOUTH.listening,  headTilt: 0,  headNod: 0,  breathAmp: 1.0 },
+  speaking:   { eyeL: EYE.speaking,   eyeR: EYE.speaking,   mouth: MOUTH.speaking,   headTilt: 1,  headNod:-2,  breathAmp: 1.2 },
+  processing: { eyeL: EYE.processing, eyeR: EYE.processing, mouth: MOUTH.processing, headTilt: 0,  headNod: 0,  breathAmp: 0.5 },
+  sleeping:   { eyeL: EYE.sleeping,   eyeR: EYE.sleeping,   mouth: MOUTH.sleeping,   headTilt:-4,  headNod:10,  breathAmp: 2.2 },
+  surprised:  { eyeL: EYE.surprised,  eyeR: EYE.surprised,  mouth: MOUTH.surprised,  headTilt: 0,  headNod:-8,  breathAmp: 0.3 },
 };
 
 // ─── Transition Timing (same as web) ───
 interface Timing { anticipation: number; action: number; overshoot: number; settle: number; squashAmt: number; overshootAmt: number; }
 const TIMINGS: Record<string, Timing> = {
-  bouncy: { anticipation: 0.06, action: 0.22, overshoot: 0.16, settle: 0.3, squashAmt: 0.12, overshootAmt: 0.18 },
-  poppy:  { anticipation: 0.04, action: 0.14, overshoot: 0.12, settle: 0.22, squashAmt: 0.15, overshootAmt: 0.22 },
-  soft:   { anticipation: 0.08, action: 0.35, overshoot: 0.18, settle: 0.4, squashAmt: 0.06, overshootAmt: 0.1 },
-  wobbly: { anticipation: 0.1, action: 0.2, overshoot: 0.25, settle: 0.5, squashAmt: 0.18, overshootAmt: 0.25 },
+  bouncy: { anticipation: 0.07, action: 0.24, overshoot: 0.18, settle: 0.35, squashAmt: 0.16, overshootAmt: 0.24 },
+  poppy:  { anticipation: 0.05, action: 0.16, overshoot: 0.14, settle: 0.24, squashAmt: 0.2, overshootAmt: 0.28 },
+  soft:   { anticipation: 0.09, action: 0.38, overshoot: 0.2, settle: 0.45, squashAmt: 0.1, overshootAmt: 0.15 },
+  wobbly: { anticipation: 0.12, action: 0.22, overshoot: 0.28, settle: 0.55, squashAmt: 0.22, overshootAmt: 0.32 },
 };
 const EMO_TIMING: Record<string, string> = {
   idle:'soft', happy:'poppy', sad:'soft', thinking:'bouncy', listening:'bouncy',
@@ -134,20 +134,24 @@ const FaceOverlay = () => {
     });
   }, []);
 
-  // ─── Speaking mouth oscillation ───
+  // ─── Speaking mouth oscillation (v2 — bouncier, more expressive) ───
   useEffect(() => {
     const onSpeak = () => {
       if (!isSpeaking.current || !speakMorph.current) return;
-      speakPhase.current += 0.07;
+      speakPhase.current += 0.08;
       const t = speakPhase.current;
-      const wave = 0.3 + Math.sin(t * 4.2) * 0.28 + Math.sin(t * 8.5) * 0.15 + Math.random() * 0.04;
-      sRef.current.mouth = speakMorph.current.open(clamp(wave, 0, 1) * 0.65);
+      const wave = 0.38 + Math.sin(t * 4.6) * 0.36 + Math.sin(t * 9.2) * 0.18 + Math.sin(t * 14) * 0.06 + Math.random() * 0.06;
+      const level = clamp(wave, 0, 1);
+      const s = sRef.current;
+      s.mouth = speakMorph.current.open(level * 0.85);
+      s.squashX = 1 + level * 0.035;
+      s.squashY = 1 - level * 0.025;
     };
     gsap.ticker.add(onSpeak);
     return () => gsap.ticker.remove(onSpeak);
   }, []);
 
-  // ─── Mouth decay when not speaking ───
+  // ─── Mouth + squash decay when not speaking ───
   useEffect(() => {
     const onDecay = () => {
       if (isSpeaking.current) return;
@@ -156,6 +160,8 @@ const FaceOverlay = () => {
       if (s.mouth !== target.mouth) {
         try { s.mouth = mkMorph(s.mouth, target.mouth)(0.18); } catch { s.mouth = target.mouth; }
       }
+      s.squashX = lerp(s.squashX, 1, 0.08);
+      s.squashY = lerp(s.squashY, 1, 0.08);
     };
     gsap.ticker.add(onDecay);
     return () => gsap.ticker.remove(onDecay);
@@ -221,37 +227,42 @@ const FaceOverlay = () => {
   const t = timeRef.current;
   const emo = emoName.current;
 
-  const floatY = Math.sin(t * 1.6) * 3.5 + Math.sin(t * 2.3) * 1.5;
-  const floatTilt = Math.sin(t * 1.1) * 0.8;
+  // v2 ALIVE motion — bigger float, multi-layered
+  const floatY = Math.sin(t * 1.4) * 5.5 + Math.sin(t * 2.1) * 2.5 + Math.sin(t * 3.3) * 1.0;
+  const floatTilt = Math.sin(t * 0.9) * 1.2 + Math.sin(t * 1.7) * 0.5;
   const breathAmp = targetPose.current.breathAmp ?? 1;
-  const speakNod = isSpeaking.current ? Math.sin(t * 5.5) * 1.2 + Math.sin(t * 8.3) * 0.6 : 0;
+  const speakNod = isSpeaking.current ? Math.sin(t * 5.5) * 2.0 + Math.sin(t * 8.3) * 1.0 + Math.sin(t * 12) * 0.4 : 0;
 
-  const headY = s.headNod + floatY * breathAmp * 0.5 + speakNod;
+  const headY = s.headNod + floatY * breathAmp * 0.65 + speakNod;
   const headTilt = s.headTilt + floatTilt;
   const headTx = `translate(${CX}, ${CY + headY}) rotate(${headTilt}) scale(${s.squashX}, ${s.squashY}) translate(${-CX}, ${-CY})`;
 
   const showBlush = emo === 'happy' || emo === 'speaking' || emo === 'listening';
-  const blushOp = emo === 'happy' ? 0.35 : 0.2;
+  const blushOp = emo === 'happy' ? 0.4 : 0.22;
 
-  // Sparkle helpers
+  // Sparkle helpers — bigger, 4 sparkles
   const sp1 = Math.sin(t * 3) * 0.4 + 0.6;
   const sp2 = Math.sin(t * 3 + 2) * 0.4 + 0.6;
   const sp3 = Math.sin(t * 2.5 + 1) * 0.4 + 0.6;
-  const spy1 = Math.sin(t * 2) * 3;
-  const spy2 = Math.sin(t * 2.3 + 1) * 3;
+  const sp4 = Math.sin(t * 2.8 + 3) * 0.4 + 0.6;
+  const spy1 = Math.sin(t * 2) * 4;
+  const spy2 = Math.sin(t * 2.3 + 1) * 4;
+  const spy3 = Math.sin(t * 1.8 + 2) * 3;
 
-  // Zzz helpers
-  const zCycle = (t * 0.6) % 3;
-  const z1y = -zCycle * 14, z1o = Math.max(0, 1 - zCycle * 0.35);
-  const z2y = -(((zCycle + 1) % 3) * 14), z2o = Math.max(0, 1 - ((zCycle + 1) % 3) * 0.35);
-  const z3y = -(((zCycle + 2) % 3) * 14), z3o = Math.max(0, 1 - ((zCycle + 2) % 3) * 0.35);
+  // Zzz helpers — slower, bigger, with wobble
+  const zCycle = (t * 0.5) % 3;
+  const zWobble = Math.sin(t * 1.5) * 2;
+  const z1y = -zCycle * 18, z1o = Math.max(0, 1 - zCycle * 0.35);
+  const z2y = -(((zCycle + 1) % 3) * 18), z2o = Math.max(0, 1 - ((zCycle + 1) % 3) * 0.35);
+  const z3y = -(((zCycle + 2) % 3) * 18), z3o = Math.max(0, 1 - ((zCycle + 2) % 3) * 0.35);
 
-  // Burst helper
+  // Burst helper — with expand pulse
   const burstPulse = 0.7 + Math.sin(t * 6) * 0.3;
 
-  // Dots helpers
-  const dy1 = Math.sin(t * 5) * 5, dy2 = Math.sin(t * 5 + 1.3) * 5, dy3 = Math.sin(t * 5 + 2.6) * 5;
-  const dop1 = 0.4 + Math.sin(t * 5) * 0.3, dop2 = 0.4 + Math.sin(t * 5 + 1.3) * 0.3, dop3 = 0.4 + Math.sin(t * 5 + 2.6) * 0.3;
+  // Dots helpers — scanning motion, bigger
+  const scanX = Math.sin(t * 2.5) * 8;
+  const dy1 = Math.sin(t * 5) * 6, dy2 = Math.sin(t * 5 + 1.3) * 6, dy3 = Math.sin(t * 5 + 2.6) * 6;
+  const dop1 = 0.45 + Math.sin(t * 5) * 0.35, dop2 = 0.45 + Math.sin(t * 5 + 1.3) * 0.35, dop3 = 0.45 + Math.sin(t * 5 + 2.6) * 0.35;
 
   return (
     <View style={[sty.root, { opacity: s.opacity }]}>
@@ -266,56 +277,62 @@ const FaceOverlay = () => {
           <G transform={`translate(${A.eyeR.x}, ${A.eyeR.y})`}>
             <Path d={s.eyeR} fill="#ffffff" />
           </G>
-          {/* Mouth */}
-          <G transform={`translate(${A.mouth.x}, ${A.mouth.y})`}>
-            <Path d={s.mouth} fill="none" stroke="#ffffff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          {/* Mouth — filled mochi blob */}
+          <G transform={`translate(${A.mouth.x}, ${A.mouth.y})`} opacity={0.95}>
+            <Path d={s.mouth} fill="#ffffff" />
           </G>
-          {/* Blush */}
+          {/* Blush — bigger, softer */}
           {showBlush && (
             <G opacity={blushOp}>
-              <Ellipse cx={A.eyeL.x - 6} cy={A.eyeL.y + 22} rx={9} ry={5} fill="#ff8ab5" />
-              <Ellipse cx={A.eyeR.x + 6} cy={A.eyeR.y + 22} rx={9} ry={5} fill="#ff8ab5" />
+              <Ellipse cx={A.eyeL.x - 4} cy={A.eyeL.y + 32} rx={13} ry={7} fill="#ff8ab5" />
+              <Ellipse cx={A.eyeR.x + 4} cy={A.eyeR.y + 32} rx={13} ry={7} fill="#ff8ab5" />
             </G>
           )}
-          {/* Happy sparkles */}
+          {/* Happy sparkles — 4 sparkles, bigger */}
           {emo === 'happy' && (
-            <G opacity={0.7}>
-              <G transform={`translate(${A.eyeR.x + 32}, ${A.eyeL.y - 18 + spy1}) scale(${sp1})`}>
-                <Line x1={-4} y1={0} x2={4} y2={0} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
-                <Line x1={0} y1={-4} x2={0} y2={4} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+            <G opacity={0.75}>
+              <G transform={`translate(${A.eyeR.x + 38}, ${A.eyeL.y - 24 + spy1}) scale(${sp1})`}>
+                <Line x1={-6} y1={0} x2={6} y2={0} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+                <Line x1={0} y1={-6} x2={0} y2={6} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
               </G>
-              <G transform={`translate(${A.eyeL.x - 28}, ${A.eyeL.y - 10 + spy2}) scale(${sp2})`}>
-                <Line x1={-3} y1={0} x2={3} y2={0} stroke="#ffffff" strokeWidth={1.2} strokeLinecap="round" />
-                <Line x1={0} y1={-3} x2={0} y2={3} stroke="#ffffff" strokeWidth={1.2} strokeLinecap="round" />
+              <G transform={`translate(${A.eyeL.x - 36}, ${A.eyeL.y - 14 + spy2}) scale(${sp2})`}>
+                <Line x1={-4.5} y1={0} x2={4.5} y2={0} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+                <Line x1={0} y1={-4.5} x2={0} y2={4.5} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
               </G>
-              <G transform={`translate(${A.eyeR.x + 18}, ${A.mouth.y + 6}) scale(${sp3})`}>
-                <Line x1={-2.5} y1={0} x2={2.5} y2={0} stroke="#ffffff" strokeWidth={1} strokeLinecap="round" />
-                <Line x1={0} y1={-2.5} x2={0} y2={2.5} stroke="#ffffff" strokeWidth={1} strokeLinecap="round" />
+              <G transform={`translate(${A.eyeR.x + 22}, ${A.mouth.y + 8 + spy3}) scale(${sp3})`}>
+                <Line x1={-3.5} y1={0} x2={3.5} y2={0} stroke="#ffffff" strokeWidth={1.2} strokeLinecap="round" />
+                <Line x1={0} y1={-3.5} x2={0} y2={3.5} stroke="#ffffff" strokeWidth={1.2} strokeLinecap="round" />
+              </G>
+              <G transform={`translate(${A.eyeL.x - 20}, ${A.mouth.y - 10}) scale(${sp4})`}>
+                <Line x1={-3} y1={0} x2={3} y2={0} stroke="#ffffff" strokeWidth={1} strokeLinecap="round" />
+                <Line x1={0} y1={-3} x2={0} y2={3} stroke="#ffffff" strokeWidth={1} strokeLinecap="round" />
               </G>
             </G>
           )}
-          {/* Sleeping Zzz */}
+          {/* Sleeping Zzz — bigger, with wobble */}
           {emo === 'sleeping' && (
-            <G transform={`translate(${A.eyeR.x + 28}, ${A.eyeR.y - 12})`}>
-              <SvgText x={0} y={z1y} fill="#ffffff" opacity={z1o * 0.7} fontSize={14} fontWeight="bold">Z</SvgText>
-              <SvgText x={10} y={z2y - 4} fill="#ffffff" opacity={z2o * 0.5} fontSize={11} fontWeight="bold">z</SvgText>
-              <SvgText x={18} y={z3y - 8} fill="#ffffff" opacity={z3o * 0.35} fontSize={9} fontWeight="bold">z</SvgText>
+            <G transform={`translate(${A.eyeR.x + 36}, ${A.eyeR.y - 16})`}>
+              <SvgText x={zWobble} y={z1y} fill="#ffffff" opacity={z1o * 0.75} fontSize={18} fontWeight="bold">Z</SvgText>
+              <SvgText x={12 + zWobble} y={z2y - 5} fill="#ffffff" opacity={z2o * 0.55} fontSize={14} fontWeight="bold">z</SvgText>
+              <SvgText x={22 + zWobble} y={z3y - 10} fill="#ffffff" opacity={z3o * 0.4} fontSize={11} fontWeight="bold">z</SvgText>
             </G>
           )}
-          {/* Surprised burst */}
+          {/* Surprised burst — more lines, bigger */}
           {emo === 'surprised' && (
-            <G opacity={burstPulse * 0.5}>
-              <Line x1={A.eyeL.x - 16} y1={A.eyeL.y - 42} x2={A.eyeL.x - 22} y2={A.eyeL.y - 52} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
-              <Line x1={200} y1={A.eyeL.y - 48} x2={200} y2={A.eyeL.y - 58} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
-              <Line x1={A.eyeR.x + 16} y1={A.eyeR.y - 42} x2={A.eyeR.x + 22} y2={A.eyeR.y - 52} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+            <G opacity={burstPulse * 0.6}>
+              <Line x1={A.eyeL.x - 12} y1={A.eyeL.y - 52} x2={A.eyeL.x - 20} y2={A.eyeL.y - 66} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+              <Line x1={200} y1={A.eyeL.y - 58} x2={200} y2={A.eyeL.y - 72} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+              <Line x1={A.eyeR.x + 12} y1={A.eyeR.y - 52} x2={A.eyeR.x + 20} y2={A.eyeR.y - 66} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+              <Line x1={A.eyeL.x + 10} y1={A.eyeL.y - 48} x2={A.eyeL.x + 6} y2={A.eyeL.y - 60} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+              <Line x1={A.eyeR.x - 10} y1={A.eyeR.y - 48} x2={A.eyeR.x - 6} y2={A.eyeR.y - 60} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
             </G>
           )}
-          {/* Processing dots */}
+          {/* Processing dots — scanning motion, bigger */}
           {emo === 'processing' && (
-            <G transform={`translate(${A.mouth.x}, ${A.mouth.y + 20})`}>
-              <Circle cx={-12} cy={dy1} r={3} fill="#ffffff" opacity={dop1} />
-              <Circle cx={0} cy={dy2} r={3} fill="#ffffff" opacity={dop2} />
-              <Circle cx={12} cy={dy3} r={3} fill="#ffffff" opacity={dop3} />
+            <G transform={`translate(${A.mouth.x + scanX}, ${A.mouth.y + 24})`}>
+              <Circle cx={-16} cy={dy1} r={4} fill="#ffffff" opacity={dop1} />
+              <Circle cx={0} cy={dy2} r={4} fill="#ffffff" opacity={dop2} />
+              <Circle cx={16} cy={dy3} r={4} fill="#ffffff" opacity={dop3} />
             </G>
           )}
         </G>
