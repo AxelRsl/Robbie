@@ -13,59 +13,59 @@ const mkMorph = (a: string, b: string): MorphFn => interpolate(a, b, { maxSegmen
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-// ─── Anchors (v2 — wider, bolder, more presence) ───
-const A = { eyeL: { x: 138, y: 122 }, eyeR: { x: 262, y: 122 }, mouth: { x: 200, y: 200 } };
+// ─── Anchors (v4 — compact Dasai Mochi mascot) ───
+const A = { eyeL: { x: 145, y: 118 }, eyeR: { x: 255, y: 118 }, mouth: { x: 200, y: 185 } };
 const CX = 200, CY = 150;
 
-// ─── SVG Paths (from paths.ts — identical to web) ───
+// ─── SVG Paths (from paths.ts — identical to web, v4 Dasai Mochi capsules) ───
 const EYE: Record<string, string> = {
-  idle:       "M -21 -33 C -21 -47 21 -47 21 -33 L 21 33 C 21 47 -21 47 -21 33 Z",
-  happy:      "M -27 10 C -27 -16 -11 -22 0 -22 C 11 -22 27 -16 27 10 C 16 6 -16 6 -27 10 Z",
-  sad:        "M -19 -28 C -19 -42 19 -42 19 -28 L 19 28 C 19 42 -19 42 -19 28 Z",
-  thinkingS:  "M -16 -24 C -16 -36 16 -36 16 -24 L 16 24 C 16 36 -16 36 -16 24 Z",
-  thinkingL:  "M -21 -33 C -21 -47 21 -47 21 -33 L 21 33 C 21 47 -21 47 -21 33 Z",
-  listening:  "M -23 -36 C -23 -50 23 -50 23 -36 L 23 36 C 23 50 -23 50 -23 36 Z",
-  speaking:   "M -22 -30 C -22 -44 22 -44 22 -30 L 22 30 C 22 44 -22 44 -22 30 Z",
-  processing: "M -16 -30 C -16 -42 16 -42 16 -30 L 16 30 C 16 42 -16 42 -16 30 Z",
-  sleeping:   "M -24 5 C -19 -12 19 -12 24 5 C 16 1 -16 1 -24 5 Z",
-  surprised:  "M -35 0 C -35 -38 35 -38 35 0 C 35 38 -35 38 -35 0 Z",
+  idle:       "M -23 -36 C -23 -49 23 -49 23 -36 L 23 36 C 23 49 -23 49 -23 36 Z",
+  happy:      "M -28 8 C -28 -18 -13 -24 0 -24 C 13 -24 28 -18 28 8 C 18 4 -18 4 -28 8 Z",
+  sad:        "M -20 -32 C -20 -44 20 -44 20 -32 L 20 32 C 20 44 -20 44 -20 32 Z",
+  thinkingS:  "M -17 -26 C -17 -38 17 -38 17 -26 L 17 26 C 17 38 -17 38 -17 26 Z",
+  thinkingL:  "M -23 -36 C -23 -49 23 -49 23 -36 L 23 36 C 23 49 -23 49 -23 36 Z",
+  listening:  "M -24 -39 C -24 -52 24 -52 24 -39 L 24 39 C 24 52 -24 52 -24 39 Z",
+  speaking:   "M -23 -33 C -23 -46 23 -46 23 -33 L 23 33 C 23 46 -23 46 -23 33 Z",
+  processing: "M -17 -33 C -17 -45 17 -45 17 -33 L 17 33 C 17 45 -17 45 -17 33 Z",
+  sleeping:   "M -26 5 C -21 -14 21 -14 26 5 C 18 1 -18 1 -26 5 Z",
+  surprised:  "M -30 -40 C -30 -56 30 -56 30 -40 L 30 40 C 30 56 -30 56 -30 40 Z",
 };
-const EYE_BLINK = "M -22 -3 C -22 -7 22 -7 22 -3 L 22 3 C 22 7 -22 7 -22 3 Z";
+const EYE_BLINK = "M -23 -3 C -23 -8 23 -8 23 -3 L 23 3 C 23 8 -23 8 -23 3 Z";
 
 const MOUTH: Record<string, string> = {
-  idle:       "M -14 -3 C -14 -7 -8 -9 0 -9 C 8 -9 14 -7 14 -3 C 14 3 8 8 0 8 C -8 8 -14 3 -14 -3 Z",
-  happy:      "M -22 -4 C -22 -10 -11 -12 0 -12 C 11 -12 22 -10 22 -4 C 22 6 14 14 0 14 C -14 14 -22 6 -22 -4 Z",
-  sad:        "M -11 -4 C -11 -7 -6 -7 0 -7 C 6 -7 11 -7 11 -4 C 11 0 6 5 0 5 C -6 5 -11 0 -11 -4 Z",
-  thinking:   "M -10 -3 C -10 -7 -4 -8 2 -8 C 7 -7 11 -6 11 -3 C 11 3 6 7 0 6 C -6 7 -10 3 -10 -3 Z",
-  listening:  "M -11 -4 C -11 -8 -6 -10 0 -10 C 6 -10 11 -8 11 -4 C 11 2 6 6 0 6 C -6 6 -11 2 -11 -4 Z",
-  speaking:   "M -15 -5 C -15 -11 -7 -14 0 -14 C 7 -14 15 -11 15 -5 C 15 4 8 11 0 11 C -8 11 -15 4 -15 -5 Z",
-  processing: "M -7 -4 C -7 -8 7 -8 7 -4 C 7 2 4 6 0 6 C -4 6 -7 2 -7 -4 Z",
-  sleeping:   "M -7 -4 C -7 -8 7 -8 7 -4 C 7 3 4 7 0 7 C -4 7 -7 3 -7 -4 Z",
-  surprised:  "M -14 -6 C -14 -14 14 -14 14 -6 C 14 6 8 14 0 14 C -8 14 -14 6 -14 -6 Z",
+  idle:       "M -16 -5 C -16 -10 -9 -12 0 -12 C 9 -12 16 -10 16 -5 C 16 3 9 9 0 9 C -9 9 -16 3 -16 -5 Z",
+  happy:      "M -24 -5 C -24 -12 -13 -15 0 -15 C 13 -15 24 -12 24 -5 C 24 7 15 17 0 17 C -15 17 -24 7 -24 -5 Z",
+  sad:        "M -13 -4 C -13 -9 -7 -10 0 -10 C 7 -10 13 -9 13 -4 C 13 2 7 7 0 7 C -7 7 -13 2 -13 -4 Z",
+  thinking:   "M -12 -4 C -12 -9 -5 -10 2 -10 C 8 -9 14 -8 14 -4 C 14 3 8 8 1 8 C -6 8 -12 3 -12 -4 Z",
+  listening:  "M -14 -5 C -14 -10 -8 -12 0 -12 C 8 -12 14 -10 14 -5 C 14 3 8 8 0 8 C -8 8 -14 3 -14 -5 Z",
+  speaking:   "M -18 -6 C -18 -13 -9 -16 0 -16 C 9 -16 18 -13 18 -6 C 18 5 10 13 0 13 C -10 13 -18 5 -18 -6 Z",
+  processing: "M -9 -5 C -9 -10 9 -10 9 -5 C 9 2 5 7 0 7 C -5 7 -9 2 -9 -5 Z",
+  sleeping:   "M -8 -4 C -8 -9 8 -9 8 -4 C 8 3 5 7 0 7 C -5 7 -8 3 -8 -4 Z",
+  surprised:  "M -16 -8 C -16 -17 16 -17 16 -8 C 16 6 10 16 0 16 C -10 16 -16 6 -16 -8 Z",
 };
-const MOUTH_SPEAK_OPEN = "M -19 -7 C -19 -16 -8 -19 0 -19 C 8 -19 19 -16 19 -7 C 19 7 11 16 0 16 C -11 16 -19 7 -19 -7 Z";
+const MOUTH_SPEAK_OPEN = "M -22 -8 C -22 -18 -10 -22 0 -22 C 10 -22 22 -18 22 -8 C 22 8 13 19 0 19 C -13 19 -22 8 -22 -8 Z";
 
 // ─── Emotion Poses ───
 interface Pose { eyeL: string; eyeR: string; mouth: string; headTilt: number; headNod: number; breathAmp: number; }
 const POSES: Record<string, Pose> = {
-  idle:       { eyeL: EYE.idle,       eyeR: EYE.idle,       mouth: MOUTH.idle,       headTilt: 0,  headNod: 0,  breathAmp: 1   },
-  happy:      { eyeL: EYE.happy,      eyeR: EYE.happy,      mouth: MOUTH.happy,      headTilt: 3,  headNod:-6,  breathAmp: 1.6 },
-  sad:        { eyeL: EYE.sad,        eyeR: EYE.sad,        mouth: MOUTH.sad,        headTilt:-4,  headNod: 7,  breathAmp: 0.6 },
-  thinking:   { eyeL: EYE.thinkingS,  eyeR: EYE.thinkingL,  mouth: MOUTH.thinking,   headTilt: 7,  headNod:-2,  breathAmp: 0.7 },
-  listening:  { eyeL: EYE.listening,  eyeR: EYE.listening,  mouth: MOUTH.listening,  headTilt: 0,  headNod: 0,  breathAmp: 1.0 },
-  speaking:   { eyeL: EYE.speaking,   eyeR: EYE.speaking,   mouth: MOUTH.speaking,   headTilt: 1,  headNod:-2,  breathAmp: 1.2 },
+  idle:       { eyeL: EYE.idle,       eyeR: EYE.idle,       mouth: MOUTH.idle,       headTilt: 0,  headNod: 0,  breathAmp: 1.2 },
+  happy:      { eyeL: EYE.happy,      eyeR: EYE.happy,      mouth: MOUTH.happy,      headTilt: 4,  headNod:-7,  breathAmp: 1.8 },
+  sad:        { eyeL: EYE.sad,        eyeR: EYE.sad,        mouth: MOUTH.sad,        headTilt:-5,  headNod: 8,  breathAmp: 0.6 },
+  thinking:   { eyeL: EYE.thinkingS,  eyeR: EYE.thinkingL,  mouth: MOUTH.thinking,   headTilt: 8,  headNod:-2,  breathAmp: 0.7 },
+  listening:  { eyeL: EYE.listening,  eyeR: EYE.listening,  mouth: MOUTH.listening,  headTilt: 0,  headNod: 0,  breathAmp: 1.1 },
+  speaking:   { eyeL: EYE.speaking,   eyeR: EYE.speaking,   mouth: MOUTH.speaking,   headTilt: 1,  headNod:-2,  breathAmp: 1.3 },
   processing: { eyeL: EYE.processing, eyeR: EYE.processing, mouth: MOUTH.processing, headTilt: 0,  headNod: 0,  breathAmp: 0.5 },
-  sleeping:   { eyeL: EYE.sleeping,   eyeR: EYE.sleeping,   mouth: MOUTH.sleeping,   headTilt:-4,  headNod:10,  breathAmp: 2.2 },
-  surprised:  { eyeL: EYE.surprised,  eyeR: EYE.surprised,  mouth: MOUTH.surprised,  headTilt: 0,  headNod:-8,  breathAmp: 0.3 },
+  sleeping:   { eyeL: EYE.sleeping,   eyeR: EYE.sleeping,   mouth: MOUTH.sleeping,   headTilt:-4,  headNod:10,  breathAmp: 2.4 },
+  surprised:  { eyeL: EYE.surprised,  eyeR: EYE.surprised,  mouth: MOUTH.surprised,  headTilt: 0,  headNod:-9,  breathAmp: 0.3 },
 };
 
 // ─── Transition Timing (same as web) ───
 interface Timing { anticipation: number; action: number; overshoot: number; settle: number; squashAmt: number; overshootAmt: number; }
 const TIMINGS: Record<string, Timing> = {
-  bouncy: { anticipation: 0.07, action: 0.24, overshoot: 0.18, settle: 0.35, squashAmt: 0.16, overshootAmt: 0.24 },
-  poppy:  { anticipation: 0.05, action: 0.16, overshoot: 0.14, settle: 0.24, squashAmt: 0.2, overshootAmt: 0.28 },
-  soft:   { anticipation: 0.09, action: 0.38, overshoot: 0.2, settle: 0.45, squashAmt: 0.1, overshootAmt: 0.15 },
-  wobbly: { anticipation: 0.12, action: 0.22, overshoot: 0.28, settle: 0.55, squashAmt: 0.22, overshootAmt: 0.32 },
+  bouncy: { anticipation: 0.06, action: 0.22, overshoot: 0.2, settle: 0.4, squashAmt: 0.22, overshootAmt: 0.3 },
+  poppy:  { anticipation: 0.04, action: 0.14, overshoot: 0.16, settle: 0.28, squashAmt: 0.26, overshootAmt: 0.34 },
+  soft:   { anticipation: 0.08, action: 0.34, overshoot: 0.22, settle: 0.5, squashAmt: 0.14, overshootAmt: 0.2 },
+  wobbly: { anticipation: 0.1, action: 0.2, overshoot: 0.3, settle: 0.6, squashAmt: 0.28, overshootAmt: 0.38 },
 };
 const EMO_TIMING: Record<string, string> = {
   idle:'soft', happy:'poppy', sad:'soft', thinking:'bouncy', listening:'bouncy',
@@ -228,8 +228,8 @@ const FaceOverlay = () => {
   const emo = emoName.current;
 
   // v2 ALIVE motion — bigger float, multi-layered
-  const floatY = Math.sin(t * 1.4) * 5.5 + Math.sin(t * 2.1) * 2.5 + Math.sin(t * 3.3) * 1.0;
-  const floatTilt = Math.sin(t * 0.9) * 1.2 + Math.sin(t * 1.7) * 0.5;
+  const floatY = Math.sin(t * 1.3) * 6.5 + Math.sin(t * 2.0) * 3.0 + Math.sin(t * 3.1) * 1.2;
+  const floatTilt = Math.sin(t * 0.85) * 1.5 + Math.sin(t * 1.6) * 0.6;
   const breathAmp = targetPose.current.breathAmp ?? 1;
   const speakNod = isSpeaking.current ? Math.sin(t * 5.5) * 2.0 + Math.sin(t * 8.3) * 1.0 + Math.sin(t * 12) * 0.4 : 0;
 
@@ -281,11 +281,11 @@ const FaceOverlay = () => {
           <G transform={`translate(${A.mouth.x}, ${A.mouth.y})`} opacity={0.95}>
             <Path d={s.mouth} fill="#ffffff" />
           </G>
-          {/* Blush — bigger, softer */}
+          {/* Blush — below capsule eyes */}
           {showBlush && (
             <G opacity={blushOp}>
-              <Ellipse cx={A.eyeL.x - 4} cy={A.eyeL.y + 32} rx={13} ry={7} fill="#ff8ab5" />
-              <Ellipse cx={A.eyeR.x + 4} cy={A.eyeR.y + 32} rx={13} ry={7} fill="#ff8ab5" />
+              <Ellipse cx={A.eyeL.x - 4} cy={A.eyeL.y + 44} rx={13} ry={7} fill="#ff8ab5" />
+              <Ellipse cx={A.eyeR.x + 4} cy={A.eyeR.y + 44} rx={13} ry={7} fill="#ff8ab5" />
             </G>
           )}
           {/* Happy sparkles — 4 sparkles, bigger */}
