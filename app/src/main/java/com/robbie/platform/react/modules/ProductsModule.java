@@ -163,11 +163,8 @@ public class ProductsModule extends ReactContextBaseJavaModule {
             List<ProductEntity> localProducts = db.productDao().getAllProductsBlocking();
             
             if (localProducts != null && !localProducts.isEmpty()) {
-                // Si ya tenemos cache de DB con la misma cantidad, reusar
-                if (cachedFromDb && cachedProducts != null && cachedProducts.length() == localProducts.size()) {
-                    Log.d(TAG, "[CACHE-DB] Usando cache de DB (" + cachedProducts.length() + " items)");
-                    return cachedProducts;
-                }
+                // Siempre releer de DB — es rapido y evita datos stale
+                // cuando el panel actualiza nombres, precios, etc.
                 Log.i(TAG, "[DB LOCAL] Encontrados " + localProducts.size() + " productos en DB local");
                 JSONArray array = new JSONArray();
                 for (ProductEntity p : localProducts) {

@@ -16,7 +16,7 @@ function AppContent() {
   const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts } = useAppStore();
 
   useEffect(() => {
-    // Cargar productos una sola vez al inicio de la app
+    // Cargar productos al inicio de la app
     if (!productsLoaded) {
       console.log('[App] Cargando productos al inicio...');
       CloudApi.getProducts().then((data) => {
@@ -63,6 +63,21 @@ function AppContent() {
       modeSwitchListener.remove();
     };
   }, [setNavigation, setCurrentMode]);
+
+  // Refrescar productos cada vez que se entra a retail (por si el panel los actualizó)
+  useEffect(() => {
+    if (currentMode === 'retail') {
+      console.log('[App] Entrando a retail - refrescando productos...');
+      CloudApi.refreshProducts().then((data) => {
+        if (data.length > 0) {
+          console.log('[App] Productos refrescados:', data.length, 'items');
+          setProducts(data);
+        }
+      }).catch((error) => {
+        console.warn('[App] Error refrescando productos:', error);
+      });
+    }
+  }, [currentMode]);
 
   const renderScreen = () => {
     switch (currentMode) {
