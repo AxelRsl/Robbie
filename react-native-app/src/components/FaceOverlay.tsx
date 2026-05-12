@@ -27,7 +27,8 @@ const EYE: Record<string, string> = {
   listening:  "M -24 -39 C -24 -52 24 -52 24 -39 L 24 39 C 24 52 -24 52 -24 39 Z",
   speaking:   "M -23 -33 C -23 -46 23 -46 23 -33 L 23 33 C 23 46 -23 46 -23 33 Z",
   processing: "M -17 -33 C -17 -45 17 -45 17 -33 L 17 33 C 17 45 -17 45 -17 33 Z",
-  sleeping:   "M -26 5 C -21 -14 21 -14 26 5 C 18 1 -18 1 -26 5 Z",
+  sleepingL:  "M -27 7 C -22 -13 22 -16 27 3 C 20 -2 -20 2 -27 7 Z",
+  sleepingR:  "M -25 4 C -19 -17 21 -13 27 8 C 20 3 -18 -1 -25 4 Z",
   surprised:  "M -30 -40 C -30 -56 30 -56 30 -40 L 30 40 C 30 56 -30 56 -30 40 Z",
 };
 const EYE_BLINK = "M -23 -3 C -23 -8 23 -8 23 -3 L 23 3 C 23 8 -23 8 -23 3 Z";
@@ -40,7 +41,7 @@ const MOUTH: Record<string, string> = {
   listening:  "M -14 -5 C -14 -10 -8 -12 0 -12 C 8 -12 14 -10 14 -5 C 14 3 8 8 0 8 C -8 8 -14 3 -14 -5 Z",
   speaking:   "M -18 -6 C -18 -13 -9 -16 0 -16 C 9 -16 18 -13 18 -6 C 18 5 10 13 0 13 C -10 13 -18 5 -18 -6 Z",
   processing: "M -9 -5 C -9 -10 9 -10 9 -5 C 9 2 5 7 0 7 C -5 7 -9 2 -9 -5 Z",
-  sleeping:   "M -8 -4 C -8 -9 8 -9 8 -4 C 8 3 5 7 0 7 C -5 7 -8 3 -8 -4 Z",
+  sleeping:   "M -12 -6 C -12 -12 12 -12 12 -6 C 12 4 7 10 0 10 C -7 10 -12 4 -12 -6 Z",
   surprised:  "M -16 -8 C -16 -17 16 -17 16 -8 C 16 6 10 16 0 16 C -10 16 -16 6 -16 -8 Z",
 };
 const MOUTH_SPEAK_OPEN = "M -22 -8 C -22 -18 -10 -22 0 -22 C 10 -22 22 -18 22 -8 C 22 8 13 19 0 19 C -13 19 -22 8 -22 -8 Z";
@@ -55,7 +56,7 @@ const POSES: Record<string, Pose> = {
   listening:  { eyeL: EYE.listening,  eyeR: EYE.listening,  mouth: MOUTH.listening,  headTilt: 0,  headNod: 0,  breathAmp: 1.1 },
   speaking:   { eyeL: EYE.speaking,   eyeR: EYE.speaking,   mouth: MOUTH.speaking,   headTilt: 1,  headNod:-2,  breathAmp: 1.3 },
   processing: { eyeL: EYE.processing, eyeR: EYE.processing, mouth: MOUTH.processing, headTilt: 0,  headNod: 0,  breathAmp: 0.5 },
-  sleeping:   { eyeL: EYE.sleeping,   eyeR: EYE.sleeping,   mouth: MOUTH.sleeping,   headTilt:-4,  headNod:10,  breathAmp: 2.4 },
+  sleeping:   { eyeL: EYE.sleepingL,  eyeR: EYE.sleepingR,  mouth: MOUTH.sleeping,   headTilt:-7,  headNod:12,  breathAmp: 2.8 },
   surprised:  { eyeL: EYE.surprised,  eyeR: EYE.surprised,  mouth: MOUTH.surprised,  headTilt: 0,  headNod:-9,  breathAmp: 0.3 },
 };
 
@@ -69,7 +70,7 @@ const TIMINGS: Record<string, Timing> = {
 };
 const EMO_TIMING: Record<string, string> = {
   idle:'soft', happy:'poppy', sad:'soft', thinking:'bouncy', listening:'bouncy',
-  speaking:'poppy', processing:'bouncy', sleeping:'soft', surprised:'wobbly',
+  speaking:'poppy', processing:'bouncy', sleeping:'wobbly', surprised:'wobbly',
 };
 
 // ─── Backward-compat aliases ───
@@ -249,12 +250,30 @@ const FaceOverlay = () => {
   const spy2 = Math.sin(t * 2.3 + 1) * 4;
   const spy3 = Math.sin(t * 1.8 + 2) * 3;
 
-  // Zzz helpers — slower, bigger, with wobble
-  const zCycle = (t * 0.5) % 3;
-  const zWobble = Math.sin(t * 1.5) * 2;
-  const z1y = -zCycle * 18, z1o = Math.max(0, 1 - zCycle * 0.35);
-  const z2y = -(((zCycle + 1) % 3) * 18), z2o = Math.max(0, 1 - ((zCycle + 1) % 3) * 0.35);
-  const z3y = -(((zCycle + 2) % 3) * 18), z3o = Math.max(0, 1 - ((zCycle + 2) % 3) * 0.35);
+  // Zzz helpers — wobblier, drifting, bigger
+  const zCycle = (t * 0.45) % 3;
+  const zWobble = Math.sin(t * 1.3) * 3.5;
+  const zWobble2 = Math.sin(t * 1.7 + 1) * 2.5;
+  const zDrift = Math.sin(t * 0.6) * 4;
+  const z1y = -zCycle * 20, z1o = Math.max(0, 1 - zCycle * 0.35);
+  const z2y = -(((zCycle + 1) % 3) * 20), z2o = Math.max(0, 1 - ((zCycle + 1) % 3) * 0.35);
+  const z3y = -(((zCycle + 2) % 3) * 20), z3o = Math.max(0, 1 - ((zCycle + 2) % 3) * 0.35);
+
+  // Sleep bubble helpers — inflate/deflate with breathing
+  const bubBreath = Math.sin(t * 0.75);
+  const bubScale = Math.max(0.2, 0.45 + bubBreath * 0.5 + Math.sin(t * 1.5) * 0.1);
+  const bubWX = Math.sin(t * 1.4) * 3;
+  const bubWY = Math.cos(t * 1.1) * 2.5;
+  const bubSqX = 1 + Math.sin(t * 2.2) * 0.08;
+  const bubSqY = 1 - Math.sin(t * 2.2) * 0.06;
+  const bubOp = 0.3 + bubScale * 0.5;
+
+  // Drool helpers — dangling stretchy blob
+  const droolWX = Math.sin(t * 2.1) * 2;
+  const droolStretch = 1 + Math.sin(t * 1.6) * 0.22 + Math.sin(t * 3.2) * 0.1;
+  const droolDrip = Math.abs(Math.sin(t * 0.6)) * 4;
+  const droolSway = Math.sin(t * 0.9) * 1.5;
+  const droolOp = 0.6 + Math.sin(t * 1.2) * 0.15;
 
   // Burst helper — with expand pulse
   const burstPulse = 0.7 + Math.sin(t * 6) * 0.3;
@@ -309,13 +328,27 @@ const FaceOverlay = () => {
               </G>
             </G>
           )}
-          {/* Sleeping Zzz — bigger, with wobble */}
+          {/* Sleeping suite — Zzz, bubble, drool */}
           {emo === 'sleeping' && (
-            <G transform={`translate(${A.eyeR.x + 36}, ${A.eyeR.y - 16})`}>
-              <SvgText x={zWobble} y={z1y} fill="#ffffff" opacity={z1o * 0.75} fontSize={18} fontWeight="bold">Z</SvgText>
-              <SvgText x={12 + zWobble} y={z2y - 5} fill="#ffffff" opacity={z2o * 0.55} fontSize={14} fontWeight="bold">z</SvgText>
-              <SvgText x={22 + zWobble} y={z3y - 10} fill="#ffffff" opacity={z3o * 0.4} fontSize={11} fontWeight="bold">z</SvgText>
-            </G>
+            <>
+              {/* Zzz — wobblier, drifting */}
+              <G transform={`translate(${A.eyeR.x + 32 + zDrift}, ${A.eyeR.y - 20})`}>
+                <SvgText x={zWobble} y={z1y} fill="#ffffff" opacity={z1o * 0.8} fontSize={20} fontWeight="bold">Z</SvgText>
+                <SvgText x={14 + zWobble2} y={z2y - 6} fill="#ffffff" opacity={z2o * 0.6} fontSize={15} fontWeight="bold">z</SvgText>
+                <SvgText x={24 + zWobble * 0.7} y={z3y - 12} fill="#ffffff" opacity={z3o * 0.4} fontSize={11} fontWeight="bold">z</SvgText>
+              </G>
+              {/* Sleep bubble — inflate/deflate */}
+              <G transform={`translate(${A.mouth.x + 20 + bubWX}, ${A.mouth.y - 8 + bubWY}) scale(${bubScale * bubSqX}, ${bubScale * bubSqY})`}>
+                <Circle cx={0} cy={0} r={16} fill="none" stroke="#ffffff" strokeWidth={2.2} opacity={bubOp} />
+                <Ellipse cx={-4} cy={-4.5} rx={4} ry={3} fill="#ffffff" opacity={bubOp * 0.45} />
+              </G>
+              {/* Drool — stretchy dangling blob */}
+              <G transform={`translate(${A.mouth.x + 6 + droolWX + droolSway}, ${A.mouth.y + 12 + droolDrip})`} opacity={droolOp}>
+                <Ellipse cx={0} cy={-4} rx={3} ry={2} fill="#ffffff" opacity={0.6} />
+                <Ellipse cx={0} cy={0} rx={4} ry={6 * droolStretch} fill="#ffffff" opacity={1} />
+                <Ellipse cx={0} cy={6 * droolStretch} rx={4.5} ry={4} fill="#ffffff" opacity={0.85} />
+              </G>
+            </>
           )}
           {/* Surprised burst — more lines, bigger */}
           {emo === 'surprised' && (
