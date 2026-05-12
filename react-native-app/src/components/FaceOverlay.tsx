@@ -1,306 +1,338 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, DeviceEventEmitter, Dimensions } from 'react-native';
+import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
+import Svg, { Rect, G, Path, Ellipse, Circle, Line, Text as SvgText } from 'react-native-svg';
 import gsap from 'gsap';
+import { interpolate } from 'flubber';
 
-const { width: W } = Dimensions.get('window');
+// ═══════════════════════════════════════════════════════════════════════════════
+// KAWAII MASCOT — SVG + Flubber (pixel-perfect match with web RobotFace.tsx)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Per-eye property defaults ───
-const D = {
-  // Bar 1: primary solid rounded rect
-  b1o: 1, b1w: 55, b1h: 75, b1r: 0, b1br: 24, b1tx: 0, b1ty: 0,
-  // Bar 2: secondary bar (for X / chevron)
-  b2o: 0, b2w: 55, b2h: 14, b2r: 0, b2br: 7, b2tx: 0, b2ty: 0,
-  // Arc: solid filled half-pill (NO border trick)
-  ao: 0, aw: 70, ah: 30, abrTL: 35, abrTR: 35, abrBL: 4, abrBR: 4,
-  // Ring: circle outline
-  ro: 0, rs: 60, rbw: 11,
-  // Dot: small solid circle (spiral center)
-  dto: 0,
-  // Heart
-  ho: 0,
-  // Color
-  cr: 0, cg: 255, cb: 255,
+type MorphFn = (t: number) => string;
+const mkMorph = (a: string, b: string): MorphFn => interpolate(a, b, { maxSegmentLength: 6 });
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+// ─── Anchors (same as web) ───
+const A = { eyeL: { x: 162, y: 125 }, eyeR: { x: 238, y: 125 }, mouth: { x: 200, y: 176 } };
+const CX = 200, CY = 150;
+
+// ─── SVG Paths (from paths.ts — identical to web) ───
+const EYE: Record<string, string> = {
+  idle:       "M -15 -24 C -15 -34 15 -34 15 -24 L 15 24 C 15 34 -15 34 -15 24 Z",
+  happy:      "M -20 8 C -20 -12 -8 -16 0 -16 C 8 -16 20 -12 20 8 C 12 5 -12 5 -20 8 Z",
+  sad:        "M -14 -20 C -14 -30 14 -30 14 -20 L 14 20 C 14 30 -14 30 -14 20 Z",
+  thinkingS:  "M -12 -18 C -12 -26 12 -26 12 -18 L 12 18 C 12 26 -12 26 -12 18 Z",
+  thinkingL:  "M -15 -24 C -15 -34 15 -34 15 -24 L 15 24 C 15 34 -15 34 -15 24 Z",
+  listening:  "M -17 -26 C -17 -36 17 -36 17 -26 L 17 26 C 17 36 -17 36 -17 26 Z",
+  speaking:   "M -16 -22 C -16 -32 16 -32 16 -22 L 16 22 C 16 32 -16 32 -16 22 Z",
+  processing: "M -12 -22 C -12 -30 12 -30 12 -22 L 12 22 C 12 30 -12 30 -12 22 Z",
+  sleeping:   "M -18 4 C -14 -8 14 -8 18 4 C 12 1 -12 1 -18 4 Z",
+  surprised:  "M -26 0 C -26 -28 26 -28 26 0 C 26 28 -26 28 -26 0 Z",
+};
+const EYE_BLINK = "M -16 -2 C -16 -5 16 -5 16 -2 L 16 2 C 16 5 -16 5 -16 2 Z";
+
+const MOUTH: Record<string, string> = {
+  idle:       "M -10 0 C -6 0 6 0 10 0 C 6 6 -6 6 -10 0 Z",
+  happy:      "M -16 -1 C -10 -1 -5 5 0 5 C 5 5 10 -1 16 -1 C 12 9 -12 9 -16 -1 Z",
+  sad:        "M -9 3 C -5 3 5 3 9 3 C 5 -3 -5 -3 -9 3 Z",
+  thinking:   "M -8 1 C -4 -2 4 2 8 -1 C 5 4 -5 5 -8 1 Z",
+  listening:  "M -8 0 C -4 -1 4 -1 8 0 C 4 4 -4 4 -8 0 Z",
+  speaking:   "M -11 -2 C -6 -6 6 -6 11 -2 C 6 6 -6 6 -11 -2 Z",
+  processing: "M -5 0 C -5 -3 5 -3 5 0 C 5 3 -5 3 -5 0 Z",
+  sleeping:   "M -5 0 C -5 -4 5 -4 5 0 C 5 4 -5 4 -5 0 Z",
+  surprised:  "M -9 0 C -9 -9 9 -9 9 0 C 9 9 -9 9 -9 0 Z",
+};
+const MOUTH_SPEAK_OPEN = "M -13 -4 C -7 -10 7 -10 13 -4 C 7 8 -7 8 -13 -4 Z";
+
+// ─── Emotion Poses ───
+interface Pose { eyeL: string; eyeR: string; mouth: string; headTilt: number; headNod: number; breathAmp: number; }
+const POSES: Record<string, Pose> = {
+  idle:       { eyeL: EYE.idle,       eyeR: EYE.idle,       mouth: MOUTH.idle,       headTilt: 0,  headNod: 0,  breathAmp: 1   },
+  happy:      { eyeL: EYE.happy,      eyeR: EYE.happy,      mouth: MOUTH.happy,      headTilt: 2,  headNod:-4,  breathAmp: 1.4 },
+  sad:        { eyeL: EYE.sad,        eyeR: EYE.sad,        mouth: MOUTH.sad,        headTilt:-3,  headNod: 5,  breathAmp: 0.7 },
+  thinking:   { eyeL: EYE.thinkingS,  eyeR: EYE.thinkingL,  mouth: MOUTH.thinking,   headTilt: 5,  headNod:-1,  breathAmp: 0.8 },
+  listening:  { eyeL: EYE.listening,  eyeR: EYE.listening,  mouth: MOUTH.listening,  headTilt: 0,  headNod: 0,  breathAmp: 0.9 },
+  speaking:   { eyeL: EYE.speaking,   eyeR: EYE.speaking,   mouth: MOUTH.speaking,   headTilt: 1,  headNod:-1,  breathAmp: 1.1 },
+  processing: { eyeL: EYE.processing, eyeR: EYE.processing, mouth: MOUTH.processing, headTilt: 0,  headNod: 0,  breathAmp: 0.6 },
+  sleeping:   { eyeL: EYE.sleeping,   eyeR: EYE.sleeping,   mouth: MOUTH.sleeping,   headTilt:-3,  headNod: 8,  breathAmp: 1.8 },
+  surprised:  { eyeL: EYE.surprised,  eyeR: EYE.surprised,  mouth: MOUTH.surprised,  headTilt: 0,  headNod:-6,  breathAmp: 0.4 },
 };
 
-type EC = typeof D;
-const mk = (o: Partial<EC>): EC => ({ ...D, ...o });
-const OFF = { b1o: 0, b2o: 0 }; // hide bars
-
-// ─── 9 Kawaii Emotions (Dasai Mochi style) ───
-const EM: Record<string, { L: EC; R: EC }> = {
-  // IDLE: tall rounded pill capsules (resting cute)
-  idle: {
-    L: mk({ b1o: 1, b1w: 50, b1h: 72, b1br: 25 }),
-    R: mk({ b1o: 1, b1w: 50, b1h: 72, b1br: 25 }),
-  },
-  // HAPPY: ^_^ kawaii arcs (top half-pills)
-  happy: {
-    L: mk({ ...OFF, ao: 1, aw: 65, ah: 28, abrTL: 33, abrTR: 33, abrBL: 4, abrBR: 4 }),
-    R: mk({ ...OFF, ao: 1, aw: 65, ah: 28, abrTL: 33, abrTR: 33, abrBL: 4, abrBR: 4 }),
-  },
-  // SAD: droopy smaller pills, slightly tilted inward
-  sad: {
-    L: mk({ b1o: 1, b1w: 44, b1h: 60, b1br: 22, b1r: 5 }),
-    R: mk({ b1o: 1, b1w: 44, b1h: 60, b1br: 22, b1r: -5 }),
-  },
-  // THINKING: asymmetric — one smaller, one normal (curious tilt)
-  thinking: {
-    L: mk({ b1o: 1, b1w: 38, b1h: 50, b1br: 19 }),
-    R: mk({ b1o: 1, b1w: 50, b1h: 72, b1br: 25 }),
-  },
-  // LISTENING: slightly wider, taller pills (alert and attentive)
-  listening: {
-    L: mk({ b1o: 1, b1w: 54, b1h: 78, b1br: 27 }),
-    R: mk({ b1o: 1, b1w: 54, b1h: 78, b1br: 27 }),
-  },
-  // SPEAKING: lively pills, slightly wider (engaged)
-  speaking: {
-    L: mk({ b1o: 1, b1w: 52, b1h: 68, b1br: 26 }),
-    R: mk({ b1o: 1, b1w: 52, b1h: 68, b1br: 26 }),
-  },
-  // PROCESSING: narrow focused pills
-  processing: {
-    L: mk({ b1o: 1, b1w: 40, b1h: 64, b1br: 20 }),
-    R: mk({ b1o: 1, b1w: 40, b1h: 64, b1br: 20 }),
-  },
-  // SLEEPING: relaxed crescent arcs (bottom half-pills = peaceful closed eyes)
-  sleeping: {
-    L: mk({ ...OFF, ao: 1, aw: 60, ah: 20, abrTL: 4, abrTR: 4, abrBL: 30, abrBR: 30 }),
-    R: mk({ ...OFF, ao: 1, aw: 60, ah: 20, abrTL: 4, abrTR: 4, abrBL: 30, abrBR: 30 }),
-  },
-  // SURPRISED: big round circles (cartoon shock)
-  surprised: {
-    L: mk({ ...OFF, ro: 1, rs: 70, rbw: 12 }),
-    R: mk({ ...OFF, ro: 1, rs: 70, rbw: 12 }),
-  },
+// ─── Transition Timing (same as web) ───
+interface Timing { anticipation: number; action: number; overshoot: number; settle: number; squashAmt: number; overshootAmt: number; }
+const TIMINGS: Record<string, Timing> = {
+  bouncy: { anticipation: 0.06, action: 0.22, overshoot: 0.16, settle: 0.3, squashAmt: 0.12, overshootAmt: 0.18 },
+  poppy:  { anticipation: 0.04, action: 0.14, overshoot: 0.12, settle: 0.22, squashAmt: 0.15, overshootAmt: 0.22 },
+  soft:   { anticipation: 0.08, action: 0.35, overshoot: 0.18, settle: 0.4, squashAmt: 0.06, overshootAmt: 0.1 },
+  wobbly: { anticipation: 0.1, action: 0.2, overshoot: 0.25, settle: 0.5, squashAmt: 0.18, overshootAmt: 0.25 },
+};
+const EMO_TIMING: Record<string, string> = {
+  idle:'soft', happy:'poppy', sad:'soft', thinking:'bouncy', listening:'bouncy',
+  speaking:'poppy', processing:'bouncy', sleeping:'soft', surprised:'wobbly',
 };
 
-// Backward-compat aliases for old emotion names from bot
-EM.neutral = EM.idle;
-EM.calm = EM.idle;
-EM.sceptic = EM.thinking;
-EM.confused = EM.thinking;
-EM.suspicious = EM.thinking;
-EM.tired = EM.sleeping;
-EM.sleepy = EM.sleeping;
-EM.broken = EM.sad;
-EM.in_love = EM.happy;
-EM.wink = EM.happy;
-EM.denying = EM.sad;
-EM.angry = EM.surprised;
-EM.afraid = EM.surprised;
-EM.disgusted = EM.surprised;
-EM.interested = EM.listening;
-EM.crazy = EM.surprised;
-
-// ─── Build flat GSAP state ───
-const buildState = () => {
-  const s: any = { op: 0, blink: 1 };
-  for (const k of Object.keys(D)) {
-    s[`L_${k}`] = D[k as keyof EC];
-    s[`R_${k}`] = D[k as keyof EC];
-  }
-  return s;
+// ─── Backward-compat aliases ───
+const ALIAS: Record<string, string> = {
+  neutral:'idle', calm:'idle', sceptic:'thinking', confused:'thinking', suspicious:'thinking',
+  tired:'sleeping', sleepy:'sleeping', broken:'sad', denying:'sad',
+  in_love:'happy', wink:'happy', angry:'surprised', afraid:'surprised',
+  disgusted:'surprised', crazy:'surprised', interested:'listening',
+};
+const resolveEmo = (name: string): string => {
+  const k = name.toLowerCase().replace(/\s+/g, '_');
+  if (POSES[k]) return k;
+  if (ALIAS[k] && POSES[ALIAS[k]]) return ALIAS[k];
+  return 'idle';
 };
 
 // ─── Component ───
 const FaceOverlay = () => {
   const [visible, setVisible] = useState(false);
-  const [, bump] = useState(0);
-  const tick = useCallback(() => bump(n => n + 1), []);
+  const [, setTick] = useState(0);
+  const tick = useCallback(() => setTick(n => n + 1), []);
 
+  const sRef = useRef({
+    eyeL: POSES.idle.eyeL, eyeR: POSES.idle.eyeR, mouth: POSES.idle.mouth,
+    headTilt: 0, headNod: 0, squashX: 1, squashY: 1, opacity: 0,
+  });
+  const morphs = useRef<{ eyeL: MorphFn; eyeR: MorphFn; mouth: MorphFn } | null>(null);
+  const blinkMorphs = useRef<{ cL: MorphFn; cR: MorphFn; oL: MorphFn; oR: MorphFn } | null>(null);
+  const speakMorph = useRef<{ open: MorphFn } | null>(null);
+  const targetPose = useRef<Pose>(POSES.idle);
+  const emoName = useRef('idle');
+  const isSpeaking = useRef(false);
+  const isBlinking = useRef(false);
+  const speakPhase = useRef(0);
+  const timeRef = useRef(0);
   const hideT = useRef<any>(null);
-  const blinkT = useRef<any>(null);
-  const pulseT = useRef<any>(null);
-  const st = useRef(buildState()).current;
-  const glow = useRef({ v: 1 }).current;
+  const tl = useRef<gsap.core.Timeline | null>(null);
+  const blinkTw = useRef<any>(null);
 
-  // Blink loop
-  const doBlink = useCallback(() => {
-    blinkT.current = setTimeout(() => {
-      gsap.to(st, {
-        blink: 0.08, duration: 0.09, yoyo: true, repeat: 1,
-        onUpdate: tick,
-        onComplete: () => doBlink(),
-      });
-    }, 2500 + Math.random() * 3000);
-  }, []);
+  // ─── Render loop via GSAP ticker ───
+  useEffect(() => {
+    const onTick = () => { timeRef.current = gsap.ticker.time; if (visible) tick(); };
+    gsap.ticker.add(onTick);
+    return () => gsap.ticker.remove(onTick);
+  }, [visible]);
 
-  // Glow pulse loop
-  const startGlow = useCallback(() => {
-    if (pulseT.current) gsap.killTweensOf(glow);
-    pulseT.current = gsap.to(glow, {
-      v: 1.6, duration: 1.2, yoyo: true, repeat: -1, ease: 'sine.inOut',
-      onUpdate: tick,
+  // ─── Blink ───
+  const scheduleBlink = useCallback(() => {
+    blinkTw.current?.kill();
+    const delay = 2.0 + Math.random() * 3.0;
+    blinkTw.current = gsap.delayedCall(delay, () => {
+      if (isBlinking.current || !blinkMorphs.current) return;
+      if (emoName.current === 'sleeping') { scheduleBlink(); return; }
+      isBlinking.current = true;
+      const s = sRef.current;
+      const { cL, cR, oL, oR } = blinkMorphs.current;
+      const bp = { t: 0 };
+      gsap.timeline({ onComplete() { isBlinking.current = false; scheduleBlink(); } })
+        .to(bp, { t: 1, duration: 0.05, ease: 'power3.in', onUpdate() { s.eyeL = cL(bp.t); s.eyeR = cR(bp.t); } })
+        .to({}, { duration: 0.03 })
+        .to(bp, { t: 0, duration: 0.18, ease: 'elastic.out(1.1, 0.4)', onUpdate() { s.eyeL = oL(1 - bp.t); s.eyeR = oR(1 - bp.t); } });
     });
   }, []);
 
+  // ─── Speaking mouth oscillation ───
+  useEffect(() => {
+    const onSpeak = () => {
+      if (!isSpeaking.current || !speakMorph.current) return;
+      speakPhase.current += 0.07;
+      const t = speakPhase.current;
+      const wave = 0.3 + Math.sin(t * 4.2) * 0.28 + Math.sin(t * 8.5) * 0.15 + Math.random() * 0.04;
+      sRef.current.mouth = speakMorph.current.open(clamp(wave, 0, 1) * 0.65);
+    };
+    gsap.ticker.add(onSpeak);
+    return () => gsap.ticker.remove(onSpeak);
+  }, []);
+
+  // ─── Mouth decay when not speaking ───
+  useEffect(() => {
+    const onDecay = () => {
+      if (isSpeaking.current) return;
+      const s = sRef.current;
+      const target = targetPose.current;
+      if (s.mouth !== target.mouth) {
+        try { s.mouth = mkMorph(s.mouth, target.mouth)(0.18); } catch { s.mouth = target.mouth; }
+      }
+    };
+    gsap.ticker.add(onDecay);
+    return () => gsap.ticker.remove(onDecay);
+  }, []);
+
+  // ─── Emotion event handler ───
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('onEmotionAction', (ev) => {
-      const emo = ev.emotion ? ev.emotion.toLowerCase().replace(/\s+/g, '_') : 'idle';
-      const cfg = EM[emo] || EM.idle;
-
+      const name = resolveEmo(ev.emotion || 'idle');
+      const fromPose = targetPose.current;
+      const toPose = POSES[name] ?? POSES.idle;
+      targetPose.current = toPose;
+      emoName.current = name;
+      isSpeaking.current = name === 'speaking';
       setVisible(true);
       if (hideT.current) clearTimeout(hideT.current);
-      if (blinkT.current) clearTimeout(blinkT.current);
+      tl.current?.kill();
+      blinkTw.current?.kill();
 
-      // Build target
-      const tgt: any = { op: 1, blink: 1 };
-      for (const k of Object.keys(D)) {
-        tgt[`L_${k}`] = cfg.L[k as keyof EC];
-        tgt[`R_${k}`] = cfg.R[k as keyof EC];
-      }
+      morphs.current = { eyeL: mkMorph(fromPose.eyeL, toPose.eyeL), eyeR: mkMorph(fromPose.eyeR, toPose.eyeR), mouth: mkMorph(fromPose.mouth, toPose.mouth) };
+      blinkMorphs.current = { cL: mkMorph(toPose.eyeL, EYE_BLINK), cR: mkMorph(toPose.eyeR, EYE_BLINK), oL: mkMorph(EYE_BLINK, toPose.eyeL), oR: mkMorph(EYE_BLINK, toPose.eyeR) };
+      speakMorph.current = { open: mkMorph(toPose.mouth, MOUTH_SPEAK_OPEN) };
 
-      gsap.to(st, {
-        ...tgt, duration: 0.7, ease: 'elastic.out(1,0.75)', onUpdate: tick,
-      });
+      const s = sRef.current;
+      const mp = { t: 0 };
+      const tk = EMO_TIMING[name] ?? 'bouncy';
+      const tm = TIMINGS[tk] ?? TIMINGS.bouncy;
 
-      startGlow();
-      setTimeout(() => doBlink(), 1000);
+      tl.current = gsap.timeline()
+        .to(s, { opacity: 1, duration: 0.2 }, 0)
+        .to(s, { squashX: 1 + tm.squashAmt, squashY: 1 - tm.squashAmt, duration: tm.anticipation, ease: 'power2.in' })
+        .to(mp, {
+          t: 1, duration: tm.action, ease: 'back.out(1.4)',
+          onUpdate() {
+            const mt = mp.t;
+            if (morphs.current) {
+              s.eyeL = morphs.current.eyeL(mt);
+              s.eyeR = morphs.current.eyeR(mt);
+              if (!isSpeaking.current) s.mouth = morphs.current.mouth(mt);
+            }
+            s.headTilt = lerp(fromPose.headTilt, toPose.headTilt, mt);
+            s.headNod = lerp(fromPose.headNod, toPose.headNod, mt);
+          },
+        }, tm.anticipation * 0.4)
+        .to(s, { squashX: 1 - tm.overshootAmt * 0.6, squashY: 1 + tm.overshootAmt * 0.6, duration: tm.overshoot, ease: 'power2.out' })
+        .to(s, { squashX: 1, squashY: 1, duration: tm.settle, ease: 'elastic.out(1.2, 0.35)' });
+
+      scheduleBlink();
 
       hideT.current = setTimeout(() => {
-        if (blinkT.current) clearTimeout(blinkT.current);
-        gsap.killTweensOf(glow);
-        gsap.to(st, {
-          op: 0, duration: 0.4, onUpdate: tick,
-          onComplete: () => setVisible(false),
-        });
+        blinkTw.current?.kill();
+        gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => setVisible(false) });
       }, 5000);
     });
 
-    return () => {
-      sub.remove();
-      clearTimeout(hideT.current);
-      clearTimeout(blinkT.current);
-      gsap.killTweensOf(st);
-      gsap.killTweensOf(glow);
-    };
+    return () => { sub.remove(); if (hideT.current) clearTimeout(hideT.current); tl.current?.kill(); blinkTw.current?.kill(); };
   }, []);
 
-  if (!visible && st.op === 0) return null;
+  // ─── RENDER ───
+  if (!visible && sRef.current.opacity === 0) return null;
 
-  const g = (p: string, k: string): number => st[`${p}${k}`] ?? 0;
-  const bk = st.blink;
-  const glowMul = glow.v;
+  const s = sRef.current;
+  const t = timeRef.current;
+  const emo = emoName.current;
 
-  const col = (p: string) =>
-    `rgb(${Math.round(g(p, 'cr'))},${Math.round(g(p, 'cg'))},${Math.round(g(p, 'cb'))})`;
+  const floatY = Math.sin(t * 1.6) * 3.5 + Math.sin(t * 2.3) * 1.5;
+  const floatTilt = Math.sin(t * 1.1) * 0.8;
+  const breathAmp = targetPose.current.breathAmp ?? 1;
+  const speakNod = isSpeaking.current ? Math.sin(t * 5.5) * 1.2 + Math.sin(t * 8.3) * 0.6 : 0;
 
-  const neon = (p: string) => ({
-    shadowColor: col(p),
-    shadowOpacity: Math.min(1, 0.9 * glowMul),
-    shadowRadius: 22 * glowMul,
-    elevation: 15,
-  });
+  const headY = s.headNod + floatY * breathAmp * 0.5 + speakNod;
+  const headTilt = s.headTilt + floatTilt;
+  const headTx = `translate(${CX}, ${CY + headY}) rotate(${headTilt}) scale(${s.squashX}, ${s.squashY}) translate(${-CX}, ${-CY})`;
 
-  const eye = (p: 'L_' | 'R_') => (
-    <View style={s.eyeBox}>
-      {/* Bar 1 */}
-      <View style={[s.abs, {
-        opacity: g(p, 'b1o'),
-        width: g(p, 'b1w'), height: g(p, 'b1h') * bk,
-        borderRadius: g(p, 'b1br'),
-        backgroundColor: col(p),
-        transform: [
-          { translateX: g(p, 'b1tx') },
-          { translateY: g(p, 'b1ty') },
-          { rotate: `${g(p, 'b1r')}deg` },
-        ],
-        ...neon(p),
-      }]} />
+  const showBlush = emo === 'happy' || emo === 'speaking' || emo === 'listening';
+  const blushOp = emo === 'happy' ? 0.35 : 0.2;
 
-      {/* Bar 2 */}
-      <View style={[s.abs, {
-        opacity: g(p, 'b2o'),
-        width: g(p, 'b2w'), height: g(p, 'b2h') * bk,
-        borderRadius: g(p, 'b2br'),
-        backgroundColor: col(p),
-        transform: [
-          { translateX: g(p, 'b2tx') },
-          { translateY: g(p, 'b2ty') },
-          { rotate: `${g(p, 'b2r')}deg` },
-        ],
-        ...neon(p),
-      }]} />
+  // Sparkle helpers
+  const sp1 = Math.sin(t * 3) * 0.4 + 0.6;
+  const sp2 = Math.sin(t * 3 + 2) * 0.4 + 0.6;
+  const sp3 = Math.sin(t * 2.5 + 1) * 0.4 + 0.6;
+  const spy1 = Math.sin(t * 2) * 3;
+  const spy2 = Math.sin(t * 2.3 + 1) * 3;
 
-      {/* Arc (SOLID filled half-pill, no border trick) */}
-      <View style={[s.abs, {
-        opacity: g(p, 'ao'),
-        width: g(p, 'aw'), height: g(p, 'ah') * bk,
-        backgroundColor: col(p),
-        borderTopLeftRadius: g(p, 'abrTL'),
-        borderTopRightRadius: g(p, 'abrTR'),
-        borderBottomLeftRadius: g(p, 'abrBL'),
-        borderBottomRightRadius: g(p, 'abrBR'),
-        ...neon(p),
-      }]} />
+  // Zzz helpers
+  const zCycle = (t * 0.6) % 3;
+  const z1y = -zCycle * 14, z1o = Math.max(0, 1 - zCycle * 0.35);
+  const z2y = -(((zCycle + 1) % 3) * 14), z2o = Math.max(0, 1 - ((zCycle + 1) % 3) * 0.35);
+  const z3y = -(((zCycle + 2) % 3) * 14), z3o = Math.max(0, 1 - ((zCycle + 2) % 3) * 0.35);
 
-      {/* Ring */}
-      <View style={[s.abs, {
-        opacity: g(p, 'ro'),
-        width: g(p, 'rs') * bk, height: g(p, 'rs') * bk,
-        borderRadius: g(p, 'rs') / 2,
-        borderWidth: g(p, 'rbw'),
-        borderColor: col(p),
-        backgroundColor: 'transparent',
-        ...neon(p),
-      }]} />
+  // Burst helper
+  const burstPulse = 0.7 + Math.sin(t * 6) * 0.3;
 
-      {/* Dot (spiral center) */}
-      <View style={[s.abs, {
-        opacity: g(p, 'dto'),
-        width: 14, height: 14 * bk,
-        borderRadius: 7,
-        backgroundColor: col(p),
-        ...neon(p),
-      }]} />
-
-      {/* Heart */}
-      <Text style={{
-        position: 'absolute',
-        fontSize: 58,
-        opacity: g(p, 'ho'),
-        color: col(p),
-        textShadowColor: col(p),
-        textShadowRadius: 25 * glowMul,
-        transform: [{ scaleY: bk }],
-      }}>♥</Text>
-    </View>
-  );
+  // Dots helpers
+  const dy1 = Math.sin(t * 5) * 5, dy2 = Math.sin(t * 5 + 1.3) * 5, dy3 = Math.sin(t * 5 + 2.6) * 5;
+  const dop1 = 0.4 + Math.sin(t * 5) * 0.3, dop2 = 0.4 + Math.sin(t * 5 + 1.3) * 0.3, dop3 = 0.4 + Math.sin(t * 5 + 2.6) * 0.3;
 
   return (
-    <View style={[s.root, { opacity: st.op }]}>
-      <View style={s.face}>
-        {eye('L_')}
-        {eye('R_')}
-      </View>
+    <View style={[sty.root, { opacity: s.opacity }]}>
+      <Svg viewBox="0 0 400 300" style={sty.svg}>
+        <Rect width={400} height={300} fill="#060d0f" />
+        <G transform={headTx}>
+          {/* Left eye */}
+          <G transform={`translate(${A.eyeL.x}, ${A.eyeL.y})`}>
+            <Path d={s.eyeL} fill="#ffffff" />
+          </G>
+          {/* Right eye */}
+          <G transform={`translate(${A.eyeR.x}, ${A.eyeR.y})`}>
+            <Path d={s.eyeR} fill="#ffffff" />
+          </G>
+          {/* Mouth */}
+          <G transform={`translate(${A.mouth.x}, ${A.mouth.y})`}>
+            <Path d={s.mouth} fill="none" stroke="#ffffff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          </G>
+          {/* Blush */}
+          {showBlush && (
+            <G opacity={blushOp}>
+              <Ellipse cx={A.eyeL.x - 6} cy={A.eyeL.y + 22} rx={9} ry={5} fill="#ff8ab5" />
+              <Ellipse cx={A.eyeR.x + 6} cy={A.eyeR.y + 22} rx={9} ry={5} fill="#ff8ab5" />
+            </G>
+          )}
+          {/* Happy sparkles */}
+          {emo === 'happy' && (
+            <G opacity={0.7}>
+              <G transform={`translate(${A.eyeR.x + 32}, ${A.eyeL.y - 18 + spy1}) scale(${sp1})`}>
+                <Line x1={-4} y1={0} x2={4} y2={0} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+                <Line x1={0} y1={-4} x2={0} y2={4} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+              </G>
+              <G transform={`translate(${A.eyeL.x - 28}, ${A.eyeL.y - 10 + spy2}) scale(${sp2})`}>
+                <Line x1={-3} y1={0} x2={3} y2={0} stroke="#ffffff" strokeWidth={1.2} strokeLinecap="round" />
+                <Line x1={0} y1={-3} x2={0} y2={3} stroke="#ffffff" strokeWidth={1.2} strokeLinecap="round" />
+              </G>
+              <G transform={`translate(${A.eyeR.x + 18}, ${A.mouth.y + 6}) scale(${sp3})`}>
+                <Line x1={-2.5} y1={0} x2={2.5} y2={0} stroke="#ffffff" strokeWidth={1} strokeLinecap="round" />
+                <Line x1={0} y1={-2.5} x2={0} y2={2.5} stroke="#ffffff" strokeWidth={1} strokeLinecap="round" />
+              </G>
+            </G>
+          )}
+          {/* Sleeping Zzz */}
+          {emo === 'sleeping' && (
+            <G transform={`translate(${A.eyeR.x + 28}, ${A.eyeR.y - 12})`}>
+              <SvgText x={0} y={z1y} fill="#ffffff" opacity={z1o * 0.7} fontSize={14} fontWeight="bold">Z</SvgText>
+              <SvgText x={10} y={z2y - 4} fill="#ffffff" opacity={z2o * 0.5} fontSize={11} fontWeight="bold">z</SvgText>
+              <SvgText x={18} y={z3y - 8} fill="#ffffff" opacity={z3o * 0.35} fontSize={9} fontWeight="bold">z</SvgText>
+            </G>
+          )}
+          {/* Surprised burst */}
+          {emo === 'surprised' && (
+            <G opacity={burstPulse * 0.5}>
+              <Line x1={A.eyeL.x - 16} y1={A.eyeL.y - 42} x2={A.eyeL.x - 22} y2={A.eyeL.y - 52} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+              <Line x1={200} y1={A.eyeL.y - 48} x2={200} y2={A.eyeL.y - 58} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+              <Line x1={A.eyeR.x + 16} y1={A.eyeR.y - 42} x2={A.eyeR.x + 22} y2={A.eyeR.y - 52} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+            </G>
+          )}
+          {/* Processing dots */}
+          {emo === 'processing' && (
+            <G transform={`translate(${A.mouth.x}, ${A.mouth.y + 20})`}>
+              <Circle cx={-12} cy={dy1} r={3} fill="#ffffff" opacity={dop1} />
+              <Circle cx={0} cy={dy2} r={3} fill="#ffffff" opacity={dop2} />
+              <Circle cx={12} cy={dy3} r={3} fill="#ffffff" opacity={dop3} />
+            </G>
+          )}
+        </G>
+      </Svg>
     </View>
   );
 };
 
-const s = StyleSheet.create({
+const sty = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#010103',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#060d0f',
     zIndex: 9999,
     elevation: 9999,
   },
-  face: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: W * 0.09,
-  },
-  eyeBox: {
-    width: 110,
-    height: 110,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  abs: {
-    position: 'absolute' as const,
+  svg: {
+    flex: 1,
   },
 });
 

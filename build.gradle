@@ -1,4 +1,9 @@
 buildscript {
+    ext {
+        compileSdkVersion = 34
+        minSdkVersion = 26
+        targetSdkVersion = 31
+    }
     repositories {
         google()
         mavenCentral()
@@ -10,6 +15,14 @@ buildscript {
 }
 
 // Repositories configured in settings.gradle dependencyResolutionManagement
+
+allprojects {
+    configurations.all {
+        resolutionStrategy.dependencySubstitution {
+            substitute module('com.facebook.react:react-native') using module('com.facebook.react:react-android:0.71.8')
+        }
+    }
+}
 
 task clean(type: Delete) {
     delete rootProject.buildDir

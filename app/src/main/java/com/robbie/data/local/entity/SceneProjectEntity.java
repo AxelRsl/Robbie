@@ -1,6 +1,7 @@
 package com.robbie.data.local.entity;
 
 import androidx.annotation.NonNull;
+import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
 
@@ -42,6 +43,8 @@ public class SceneProjectEntity {
 
     private String backgroundImageUrl;
 
+    @NonNull
+    @ColumnInfo(defaultValue = "#F5F5F5")
     private String backgroundColor;
 
     private boolean isActive;
@@ -90,7 +93,7 @@ public class SceneProjectEntity {
     public String getTitleImageUrl() { return titleImageUrl; }
     @NonNull public String getTemplateType() { return templateType; }
     public String getBackgroundImageUrl() { return backgroundImageUrl; }
-    public String getBackgroundColor() { return backgroundColor; }
+    @NonNull public String getBackgroundColor() { return backgroundColor; }
     public boolean isActive() { return isActive; }
     public long getCreatedAt() { return createdAt; }
     public long getUpdatedAt() { return updatedAt; }
@@ -102,7 +105,7 @@ public class SceneProjectEntity {
     public void setTitleImageUrl(String titleImageUrl) { this.titleImageUrl = titleImageUrl; }
     public void setTemplateType(@NonNull String templateType) { this.templateType = templateType; }
     public void setBackgroundImageUrl(String backgroundImageUrl) { this.backgroundImageUrl = backgroundImageUrl; }
-    public void setBackgroundColor(String backgroundColor) { this.backgroundColor = backgroundColor; }
+    public void setBackgroundColor(@NonNull String backgroundColor) { this.backgroundColor = backgroundColor; }
     public void setActive(boolean active) { isActive = active; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
     public void setUpdatedAt(long updatedAt) { this.updatedAt = updatedAt; }

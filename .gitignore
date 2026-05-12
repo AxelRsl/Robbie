@@ -92,9 +92,7 @@ node_modules/
 react-native-app/node_modules/
 
 # Docs
-dev-setup.md
-robot-api.md
-agentos-sdk.md
+
 
 # Scripts
 deploy-to-robot.ps1
