@@ -20,6 +20,7 @@ import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.CommandListener;
 import com.ainirobot.coreservice.client.Definition;
+import com.ainirobot.coreservice.client.StatusListener;
 import com.ainirobot.coreservice.client.person.PersonApi;
 import com.ainirobot.coreservice.client.person.PersonListener;
 import com.ainirobot.coreservice.client.listener.Person;
@@ -60,6 +61,13 @@ public class RobotActionHandler {
     private int currentFollowId = -1;
     private PersonListener personListener;
     private boolean isNavigating = false;
+    private boolean isChargingMode = false;
+    private boolean isNavigatingToCharger = false;
+    private int chargeReqId = 8001;
+    private static final int CHARGE_TIMEOUT = 120000;
+    private static final int LOW_BATTERY_THRESHOLD = 20;
+    private StatusListener batteryStatusListener;
+    private boolean batteryMonitorActive = false;
     private final List<String> mapPlaces = new ArrayList<>();
     private final ProceduralAnimationManager animationManager;
 
@@ -78,6 +86,7 @@ public class RobotActionHandler {
         void onProductDetail(String productId);
         void onLedEvent(String eventType, String data);
         void onModeSwitch(String mode);
+        void onChargingEvent(String status, String message);
     }
     
 
@@ -168,6 +177,10 @@ public class RobotActionHandler {
                 return handleEnterRetailMode();
             case "com.robbie.action.ENTER_EXHIBITION_MODE":
                 return handleEnterExhibitionMode();
+            case "com.robbie.action.GO_CHARGE":
+                return handleGoCharge();
+            case "com.robbie.action.STOP_CHARGE":
+                return handleStopCharge();
             default:
                 Log.w(TAG, "Unknown action: " + actionName);
                 return false;
@@ -778,6 +791,11 @@ public class RobotActionHandler {
                         }
                     });
                     mainHandler.post(() -> LedController.getInstance().restoreDefault());
+
+                    // Start battery monitor for autonomous charging
+                    startBatteryMonitor();
+                    // Disable system battery UI so our app keeps control during charging
+                    try { robotApi.disableBattery(); } catch (Exception ignored) {}
                 }
 
                 @Override
@@ -1101,7 +1119,217 @@ public class RobotActionHandler {
         }
     }
 
+    // ==================== Carga ====================
+
+    private boolean handleGoCharge() {
+        Log.d(TAG, "GO_CHARGE");
+
+        if (isChargingMode || isNavigatingToCharger) {
+            if (agentBridge != null)
+                agentBridge.tts("Ya me estoy dirigiendo al cargador o estoy cargando.", 8000);
+            return true;
+        }
+
+        mainHandler.post(() -> startChargingSequence(false));
+        return true;
+    }
+
+    private boolean handleStopCharge() {
+        Log.d(TAG, "STOP_CHARGE");
+        mainHandler.post(() -> stopChargingSequence());
+        return true;
+    }
+
+    /**
+     * Inicia la secuencia de carga: navega al cargador y muestra la UI de carga.
+     * @param autoTriggered true si fue disparado automaticamente por bateria baja
+     */
+    private void startChargingSequence(boolean autoTriggered) {
+        if (!robotApiConnected || robotApi == null) {
+            if (agentBridge != null)
+                agentBridge.tts("No puedo ir a cargar en este momento, el sistema de movimiento no esta conectado.", 10000);
+            return;
+        }
+
+        // Stop face tracking and navigation if active
+        if (isNavigating) stopNavigation();
+        stopFaceTracking();
+
+        isNavigatingToCharger = true;
+        isChargingMode = true;
+
+        // Notify RN to show charging screen
+        if (resultCallback != null) {
+            resultCallback.onChargingEvent("navigating_to_charger", autoTriggered ? "Bateria baja, yendo a cargar..." : "Yendo al cargador...");
+            resultCallback.onModeSwitch("charging");
+        }
+
+        String ttsMsg = autoTriggered
+            ? "Mi bateria esta baja. Voy a cargarme, vuelvo pronto."
+            : "Voy a mi estacion de carga. Cuando quieras que regrese, solo dime.";
+        if (agentBridge != null) agentBridge.tts(ttsMsg, 10000);
+
+        try {
+            robotApi.startNaviToAutoChargeAction(chargeReqId++, CHARGE_TIMEOUT, 0.3, 30000L, new ActionListener() {
+                @Override
+                public void onResult(int status, String responseString) {
+                    isNavigatingToCharger = false;
+                    if (status == Definition.RESULT_OK) {
+                        isChargingMode = true;
+                        Log.i(TAG, "Auto-charge: arrived at dock and charging");
+                        if (resultCallback != null)
+                            resultCallback.onChargingEvent("charging", "Cargando...");
+                        if (agentBridge != null)
+                            agentBridge.tts("Ya estoy cargando. Dime 'deja de cargar' cuando quieras que regrese.", 10000);
+                    } else {
+                        isChargingMode = false;
+                        Log.w(TAG, "Auto-charge failed: status=" + status);
+                        if (resultCallback != null) {
+                            resultCallback.onChargingEvent("charge_failed", "No se pudo llegar al cargador");
+                            resultCallback.onModeSwitch("home");
+                        }
+                        if (agentBridge != null)
+                            agentBridge.tts("No pude llegar al cargador.", 8000);
+                        mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+                    }
+                }
+
+                @Override
+                public void onError(int errorCode, String errorString) {
+                    isNavigatingToCharger = false;
+                    isChargingMode = false;
+                    Log.e(TAG, "Auto-charge error: code=" + errorCode + " msg=" + errorString);
+                    if (resultCallback != null) {
+                        resultCallback.onChargingEvent("charge_failed", "Error: " + errorString);
+                        resultCallback.onModeSwitch("home");
+                    }
+                    if (agentBridge != null)
+                        agentBridge.tts("Hubo un error al intentar ir al cargador.", 8000);
+                    mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+                }
+
+                @Override
+                public void onStatusUpdate(int status, String data) {
+                    Log.d(TAG, "Auto-charge status: " + status + " data=" + data);
+                    if (status == Definition.STATUS_NAVI_AVOID) {
+                        if (resultCallback != null)
+                            resultCallback.onChargingEvent("charge_obstacle", "Hay un obstaculo en el camino");
+                    }
+                }
+            });
+        } catch (Exception e) {
+            isNavigatingToCharger = false;
+            isChargingMode = false;
+            Log.e(TAG, "Error starting auto-charge", e);
+            if (agentBridge != null) agentBridge.tts("Error al intentar ir a cargar.", 8000);
+            if (resultCallback != null) resultCallback.onModeSwitch("home");
+            mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+        }
+    }
+
+    private void stopChargingSequence() {
+        if (!isChargingMode && !isNavigatingToCharger) {
+            if (agentBridge != null)
+                agentBridge.tts("No estoy cargando en este momento.", 8000);
+            return;
+        }
+
+        Log.i(TAG, "Stopping charging sequence");
+        try {
+            if (robotApi != null) {
+                robotApi.stopAutoChargeAction(chargeReqId++, true);
+                // disableBattery() required before leaveChargingPile per SDK docs
+                robotApi.disableBattery();
+                // Move forward off the charging pile (speed=0.3 m/s, distance=0.5m)
+                robotApi.leaveChargingPile(chargeReqId++, 0.3f, 0.5f, new CommandListener() {
+                    @Override
+                    public void onResult(int result, String message) {
+                        Log.d(TAG, "leaveChargingPile result: " + result + " msg=" + message);
+                        // Re-enable battery UI after leaving
+                        try { robotApi.enableBattery(); } catch (Exception ignored) {}
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping auto-charge", e);
+        }
+
+        isChargingMode = false;
+        isNavigatingToCharger = false;
+
+        if (resultCallback != null) {
+            resultCallback.onChargingEvent("charge_stopped", "Carga detenida");
+            resultCallback.onModeSwitch("home");
+        }
+        if (agentBridge != null)
+            agentBridge.tts("De acuerdo, dejo de cargar. Estoy listo para ayudarte.", 10000);
+
+        mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+    }
+
+    // ==================== Battery Monitor ====================
+
+    /**
+     * Inicia el monitoreo de bateria.
+     * Si el nivel cae por debajo de LOW_BATTERY_THRESHOLD, inicia carga automatica.
+     */
+    public void startBatteryMonitor() {
+        if (batteryMonitorActive || robotApi == null) return;
+
+        try {
+            batteryStatusListener = new StatusListener() {
+                @Override
+                public void onStatusUpdate(String type, String data) {
+                    try {
+                        Log.d(TAG, "Battery status: " + data);
+                        JSONObject json = new JSONObject(data);
+                        int level = json.optInt("level", -1);
+                        boolean charging = json.optBoolean("isCharging", false);
+
+                        // Emit battery event to RN
+                        if (resultCallback != null) {
+                            resultCallback.onChargingEvent("battery_update",
+                                "{\"level\":" + level + ",\"isCharging\":" + charging + "}");
+                        }
+
+                        // Auto-charge when battery low and not already charging
+                        if (level >= 0 && level < LOW_BATTERY_THRESHOLD && !charging
+                                && !isChargingMode && !isNavigatingToCharger) {
+                            Log.w(TAG, "Battery low (" + level + "%), starting auto-charge");
+                            mainHandler.post(() -> startChargingSequence(true));
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "Error parsing battery status", e);
+                    }
+                }
+            };
+
+            robotApi.registerStatusListener(Definition.STATUS_BATTERY, batteryStatusListener);
+            batteryMonitorActive = true;
+            Log.i(TAG, "Battery monitor started (threshold=" + LOW_BATTERY_THRESHOLD + "%)");
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting battery monitor", e);
+        }
+    }
+
+    public void stopBatteryMonitor() {
+        if (batteryStatusListener != null && robotApi != null) {
+            try {
+                robotApi.unregisterStatusListener(batteryStatusListener);
+            } catch (Exception e) {
+                Log.w(TAG, "Error stopping battery monitor", e);
+            }
+            batteryStatusListener = null;
+        }
+        batteryMonitorActive = false;
+    }
+
+    public boolean isChargingMode() {
+        return isChargingMode;
+    }
+
     public void destroy() {
+        stopBatteryMonitor();
         stopFaceTracking();
         if (robotApi != null) robotApi.disconnectApi();
     }

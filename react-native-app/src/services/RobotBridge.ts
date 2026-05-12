@@ -8,6 +8,7 @@ const {
   ProductsModule,
   AgentModule,
   LedModule,
+  ChargingModule,
 } = NativeModules;
 
 export class RobotBridge {
@@ -314,6 +315,75 @@ export class RobotBridge {
     } catch (error) {
       console.error('Error deteniendo navegación:', error);
       throw error;
+    }
+  }
+
+  // --- Control de Carga ---
+
+  static async startAutoCharge(): Promise<void> {
+    try {
+      await ChargingModule.startAutoCharge();
+      console.log('[RobotBridge] Auto-charge iniciado');
+    } catch (error) {
+      console.error('Error iniciando auto-charge:', error);
+      throw error;
+    }
+  }
+
+  static async stopAutoCharge(): Promise<void> {
+    try {
+      await ChargingModule.stopAutoCharge();
+      console.log('[RobotBridge] Auto-charge detenido');
+    } catch (error) {
+      console.error('Error deteniendo auto-charge:', error);
+      throw error;
+    }
+  }
+
+  static async leaveChargingPile(): Promise<void> {
+    try {
+      await ChargingModule.leaveChargingPile();
+      console.log('[RobotBridge] Saliendo del cargador');
+    } catch (error) {
+      console.error('Error saliendo del cargador:', error);
+      throw error;
+    }
+  }
+
+  static async getBatteryInfo(): Promise<any> {
+    try {
+      const infoJson = await ChargingModule.getBatteryInfo();
+      return JSON.parse(infoJson);
+    } catch (error) {
+      console.error('Error obteniendo info de batería:', error);
+      return null;
+    }
+  }
+
+  static async startBatteryMonitor(): Promise<void> {
+    try {
+      await ChargingModule.startBatteryMonitor();
+      console.log('[RobotBridge] Monitor de batería iniciado');
+    } catch (error) {
+      console.error('Error iniciando monitor de batería:', error);
+    }
+  }
+
+  static async stopBatteryMonitor(): Promise<void> {
+    try {
+      await ChargingModule.stopBatteryMonitor();
+      console.log('[RobotBridge] Monitor de batería detenido');
+    } catch (error) {
+      console.error('Error deteniendo monitor de batería:', error);
+    }
+  }
+
+  static async disableBatteryUI(): Promise<void> {
+    try {
+      await ChargingModule.disableBatteryUI();
+      console.log('[RobotBridge] Battery UI deshabilitada');
+    } catch (error) {
+      console.error('Error deshabilitando battery UI:', error);
     }
   }
 }

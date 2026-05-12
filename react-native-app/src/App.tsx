@@ -1,19 +1,61 @@
 import React, { useEffect } from 'react';
 import FaceOverlay from '@/components/FaceOverlay';
-import { View, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { MenuScreen } from '@/screens/MenuScreen';
 import { RetailScreen } from '@/screens/RetailScreen';
 import { PromoScreen } from '@/screens/PromoScreen';
 import { ConfigScreen } from '@/screens/ConfigScreen';
 import { NavigationScreen } from '@/screens/NavigationScreen';
+import { ChargingScreen } from '@/screens/ChargingScreen';
 import { ProductDetailModal } from '@/components/ProductDetailModal';
 import { CloudApi } from '@/services/CloudApi';
 import { useAppStore } from '@/stores/useAppStore';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 
+const { RobotSkillModule: SkillModule } = NativeModules;
+
+function ChargingStopButton() {
+  const { setCurrentMode, setChargingStatus } = useAppStore();
+  const handleStop = async () => {
+    try {
+      if (SkillModule) await SkillModule.executeAction('com.robbie.action.STOP_CHARGE', '{}');
+    } catch (e) { console.error('[ChargingStopButton]', e); }
+    setChargingStatus('', '');
+    setCurrentMode('home');
+  };
+  return (
+    <View style={{
+      position: 'absolute',
+      bottom: 24,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 99999,
+      zIndex: 99999,
+    }}>
+      <TouchableOpacity
+        onPress={handleStop}
+        activeOpacity={0.7}
+        style={{
+          paddingHorizontal: 28,
+          paddingVertical: 12,
+          backgroundColor: 'rgba(239, 68, 68, 0.85)',
+          borderRadius: 24,
+          elevation: 99999,
+        }}
+      >
+        <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '700' }}>
+          Dejar de cargar
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function AppContent() {
-  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts } = useAppStore();
+  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, setChargingStatus } = useAppStore();
 
   useEffect(() => {
     // Cargar productos al inicio de la app
@@ -44,6 +86,12 @@ function AppContent() {
       }
     });
 
+    // Escuchar eventos de carga
+    const chargingListener = eventEmitter.addListener('onChargingStatus', (event) => {
+      console.log('[App] Charging event:', event);
+      setChargingStatus(event.status || '', event.message || '');
+    });
+
     // Escuchar eventos de cambio de modo desde comandos de voz
     const modeSwitchListener = eventEmitter.addListener('onModeSwitch', (event) => {
       console.log('[App] Mode switch event:', event);
@@ -61,8 +109,9 @@ function AppContent() {
     return () => {
       navigationListener.remove();
       modeSwitchListener.remove();
+      chargingListener.remove();
     };
-  }, [setNavigation, setCurrentMode]);
+  }, [setNavigation, setCurrentMode, setChargingStatus]);
 
   // Refrescar productos cada vez que se entra a retail (por si el panel los actualizó)
   useEffect(() => {
@@ -81,6 +130,8 @@ function AppContent() {
 
   const renderScreen = () => {
     switch (currentMode) {
+      case 'charging':
+        return <ChargingScreen />;
       case 'navigating':
         return <NavigationScreen />;
       case 'retail':
@@ -108,6 +159,7 @@ function AppContent() {
         />
       )}
       <FaceOverlay />
+      {currentMode === 'charging' && <ChargingStopButton />}
     </View>
   );
 }

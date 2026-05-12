@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
+import { useAppStore } from '@/stores/useAppStore';
 import Svg, { Rect, G, Path, Ellipse, Circle, Line, Text as SvgText } from 'react-native-svg';
 import gsap from 'gsap';
 import { interpolate } from 'flubber';
@@ -89,6 +90,8 @@ const resolveEmo = (name: string): string => {
 
 // ─── Component ───
 const FaceOverlay = () => {
+  const currentMode = useAppStore(s => s.currentMode);
+  const isChargingMode = currentMode === 'charging';
   const [visible, setVisible] = useState(false);
   const [, setTick] = useState(0);
   const tick = useCallback(() => setTick(n => n + 1), []);
@@ -212,14 +215,32 @@ const FaceOverlay = () => {
 
       scheduleBlink();
 
-      hideT.current = setTimeout(() => {
-        blinkTw.current?.kill();
-        gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => setVisible(false) });
-      }, 5000);
+      // Don't auto-hide during charging mode — face stays visible
+      if (!ev._persistSleeping) {
+        hideT.current = setTimeout(() => {
+          blinkTw.current?.kill();
+          gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => setVisible(false) });
+        }, 5000);
+      }
     });
 
     return () => { sub.remove(); if (hideT.current) clearTimeout(hideT.current); tl.current?.kill(); blinkTw.current?.kill(); };
   }, []);
+
+  // ─── Charging mode: activate sleeping and keep alive ───
+  useEffect(() => {
+    if (isChargingMode) {
+      // Trigger sleeping emotion once, with persist flag
+      DeviceEventEmitter.emit('onEmotionAction', { emotion: 'sleeping', sentence: '', _persistSleeping: true });
+    } else {
+      // Exiting charging mode — fade out if sleeping
+      if (emoName.current === 'sleeping') {
+        if (hideT.current) clearTimeout(hideT.current);
+        const s = sRef.current;
+        gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => setVisible(false) });
+      }
+    }
+  }, [isChargingMode]);
 
   // ─── RENDER ───
   if (!visible && sRef.current.opacity === 0) return null;

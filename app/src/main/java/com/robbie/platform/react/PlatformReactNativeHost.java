@@ -16,6 +16,7 @@ import com.robbie.platform.react.modules.RobbieConfigModule;
 import com.robbie.platform.react.modules.LedModule;
 import com.robbie.platform.react.modules.ProductSearchModule;
 import com.robbie.platform.react.modules.TourMediaModule;
+import com.robbie.platform.react.modules.ChargingModule;
 import com.oblador.vectoricons.VectorIconsPackage;
 import com.horcrux.svg.SvgPackage;
 
@@ -79,6 +80,7 @@ public class PlatformReactNativeHost extends ReactNativeHost {
                 modules.add(new LedModule(reactContext));
                 modules.add(new ProductSearchModule(reactContext));
                 modules.add(new TourMediaModule(reactContext));
+                modules.add(new ChargingModule(reactContext));
                 return modules;
             }
             

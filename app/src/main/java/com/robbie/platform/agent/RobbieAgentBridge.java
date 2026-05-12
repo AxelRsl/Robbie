@@ -118,6 +118,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             registerLedActions();
             registerTourActions();
             registerModeActions();
+            registerChargingActions();
 
             ready = true;
             Log.i(TAG, "RobbieAgentBridge initialized with all actions");
@@ -479,6 +480,36 @@ public class RobbieAgentBridge implements IAgentBridge {
             Arrays.asList(),
             (action, params) -> {
                 dispatchAction("com.robbie.action.ENTER_EXHIBITION_MODE", action, params);
+                return true;
+            }
+        ));
+    }
+
+    private void registerChargingActions() {
+        // Action: Ir a cargar
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.GO_CHARGE",
+            "Ir a cargar",
+            "Envia al robot a su estacion de carga. Usa este action cuando el usuario diga 've a cargar', 'carga tu bateria', 'necesitas cargarte', 'recarga', 'ir a cargar' o similar.",
+            Collections.emptyList(),
+            (action, params) -> {
+                if (actionCallback != null)
+                    actionCallback.onActionDispatched("com.robbie.action.GO_CHARGE", params);
+                action.notify(successResult(), false);
+                return true;
+            }
+        ));
+
+        // Action: Dejar de cargar
+        pageAgent.registerAction(new Action(
+            "com.robbie.action.STOP_CHARGE",
+            "Dejar de cargar",
+            "Detiene la carga del robot y sale de la estacion de carga. Usa este action cuando el usuario diga 'deja de cargar', 'sal del cargador', 'detener carga', 'ya no cargues' o similar.",
+            Collections.emptyList(),
+            (action, params) -> {
+                if (actionCallback != null)
+                    actionCallback.onActionDispatched("com.robbie.action.STOP_CHARGE", params);
+                action.notify(successResult(), false);
                 return true;
             }
         ));

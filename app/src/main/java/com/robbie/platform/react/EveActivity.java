@@ -161,6 +161,11 @@ public class EveActivity extends ReactActivity {
             public void onModeSwitch(String mode) {
                 emitModeSwitchEvent(mode);
             }
+
+            @Override
+            public void onChargingEvent(String status, String message) {
+                emitChargingEvent(status, message);
+            }
         };
     }
 
@@ -357,6 +362,21 @@ public class EveActivity extends ReactActivity {
             Log.d(TAG, "Mode switch: " + mode);
         } catch (Exception e) {
             Log.w(TAG, "Could not emit mode switch event", e);
+        }
+    }
+
+    private void emitChargingEvent(String status, String message) {
+        ReactContext ctx = getReactCtx();
+        if (ctx == null) return;
+        try {
+            WritableMap params = Arguments.createMap();
+            params.putString("status", status);
+            params.putString("message", message);
+            ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onChargingStatus", params);
+            Log.d(TAG, "Charging event: " + status + " - " + message);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not emit charging event", e);
         }
     }
 

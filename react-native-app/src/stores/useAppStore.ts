@@ -22,6 +22,8 @@ interface AppState {
   productsLoaded: boolean;
   sceneProject: SceneProject | null;
   sceneProjectLoaded: boolean;
+  chargingStatus: string;
+  chargingMessage: string;
   
   setRetailTemplate: (template: RetailTemplate) => void;
   setMenuTemplate: (template: MenuTemplate) => void;
@@ -37,6 +39,7 @@ interface AppState {
   setProducts: (products: Product[]) => void;
   setProductsLoaded: (loaded: boolean) => void;
   setSceneProject: (project: SceneProject | null) => void;
+  setChargingStatus: (status: string, message: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -54,6 +57,8 @@ export const useAppStore = create<AppState>((set) => ({
   productsLoaded: false,
   sceneProject: null,
   sceneProjectLoaded: false,
+  chargingStatus: '',
+  chargingMessage: '',
   
   setRetailTemplate: (template) => set({ retailTemplate: template }),
   setMenuTemplate: (template) => set({ menuTemplate: template }),
@@ -77,4 +82,5 @@ export const useAppStore = create<AppState>((set) => ({
   setProducts: (products) => set({ products, productsLoaded: true }),
   setProductsLoaded: (loaded) => set({ productsLoaded: loaded }),
   setSceneProject: (project) => set({ sceneProject: project, sceneProjectLoaded: true }),
+  setChargingStatus: (status, message) => set({ chargingStatus: status, chargingMessage: message }),
 }));
