@@ -41,6 +41,7 @@ public class EveActivity extends ReactActivity {
 
     private static final String TAG = "EveActivity";
     private static WeakReference<EveActivity> currentInstance;
+    private String lastChargingEventSignature = "";
 
     private RobbieAgentBridge agentBridge;
     private RobotActionHandler actionHandler;
@@ -163,8 +164,8 @@ public class EveActivity extends ReactActivity {
             }
 
             @Override
-            public void onChargingEvent(String status, String message) {
-                emitChargingEvent(status, message);
+            public void onChargingEvent(String status, String message, int batteryLevel, boolean isCharging, boolean isNavigatingToCharger, boolean robotApiConnected, boolean autoTriggered) {
+                emitChargingEvent(status, message, batteryLevel, isCharging, isNavigatingToCharger, robotApiConnected, autoTriggered);
             }
         };
     }
@@ -365,13 +366,23 @@ public class EveActivity extends ReactActivity {
         }
     }
 
-    private void emitChargingEvent(String status, String message) {
+    private void emitChargingEvent(String status, String message, int batteryLevel, boolean isCharging, boolean isNavigatingToCharger, boolean robotApiConnected, boolean autoTriggered) {
         ReactContext ctx = getReactCtx();
         if (ctx == null) return;
         try {
+            String signature = status + "|" + message + "|" + batteryLevel + "|" + isCharging + "|" + isNavigatingToCharger + "|" + robotApiConnected + "|" + autoTriggered;
+            if (signature.equals(lastChargingEventSignature)) {
+                return;
+            }
+            lastChargingEventSignature = signature;
             WritableMap params = Arguments.createMap();
             params.putString("status", status);
             params.putString("message", message);
+            params.putInt("batteryLevel", batteryLevel);
+            params.putBoolean("isCharging", isCharging);
+            params.putBoolean("isNavigatingToCharger", isNavigatingToCharger);
+            params.putBoolean("robotApiConnected", robotApiConnected);
+            params.putBoolean("autoTriggered", autoTriggered);
             ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
                 .emit("onChargingStatus", params);
             Log.d(TAG, "Charging event: " + status + " - " + message);

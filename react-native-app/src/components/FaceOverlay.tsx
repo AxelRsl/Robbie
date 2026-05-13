@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
+import { useCharging } from '@/contexts/ChargingContext';
 import { useAppStore } from '@/stores/useAppStore';
 import Svg, { Rect, G, Path, Ellipse, Circle, Line, Text as SvgText } from 'react-native-svg';
 import gsap from 'gsap';
@@ -91,7 +92,8 @@ const resolveEmo = (name: string): string => {
 // ─── Component ───
 const FaceOverlay = () => {
   const currentMode = useAppStore(s => s.currentMode);
-  const isChargingMode = currentMode === 'charging';
+  const charging = useCharging();
+  const isChargingMode = currentMode === 'charging' || charging.isCharging || charging.isNavigatingToCharger;
   const [visible, setVisible] = useState(false);
   const [, setTick] = useState(0);
   const tick = useCallback(() => setTick(n => n + 1), []);
@@ -112,19 +114,41 @@ const FaceOverlay = () => {
   const hideT = useRef<any>(null);
   const tl = useRef<gsap.core.Timeline | null>(null);
   const blinkTw = useRef<any>(null);
+  const sleepModeTl = useRef<gsap.core.Timeline | null>(null);
+  const lastNonChargingEmotion = useRef('idle');
+  const sleepLayer = useRef({ glow: 0, energy: 1 });
+  const mountedRef = useRef(false);
+  const hideTokenRef = useRef(0);
+  const transitionIdRef = useRef(0);
+  const persistentEmotionRef = useRef(false);
+  const sleepModeActiveRef = useRef(false);
+  const lastEmotionEventSignatureRef = useRef('');
+  const lastEmotionEventAtRef = useRef(0);
 
-  // ─── Render loop via GSAP ticker ───
-  useEffect(() => {
-    const onTick = () => { timeRef.current = gsap.ticker.time; if (visible) tick(); };
-    gsap.ticker.add(onTick);
-    return () => gsap.ticker.remove(onTick);
-  }, [visible]);
+  const cleanupAllAnimations = useCallback((preserveSleepTimeline = false) => {
+    if (hideT.current) {
+      clearTimeout(hideT.current);
+      hideT.current = null;
+    }
+    tl.current?.kill();
+    tl.current = null;
+    blinkTw.current?.kill();
+    blinkTw.current = null;
+    if (!preserveSleepTimeline) {
+      sleepModeTl.current?.kill();
+      sleepModeTl.current = null;
+      sleepModeActiveRef.current = false;
+    }
+  }, []);
 
-  // ─── Blink ───
   const scheduleBlink = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
     blinkTw.current?.kill();
     const delay = 2.0 + Math.random() * 3.0;
     blinkTw.current = gsap.delayedCall(delay, () => {
+      if (!mountedRef.current) return;
       if (isBlinking.current || !blinkMorphs.current) return;
       if (emoName.current === 'sleeping') { scheduleBlink(); return; }
       isBlinking.current = true;
@@ -137,6 +161,89 @@ const FaceOverlay = () => {
         .to(bp, { t: 0, duration: 0.18, ease: 'elastic.out(1.1, 0.4)', onUpdate() { s.eyeL = oL(1 - bp.t); s.eyeR = oR(1 - bp.t); } });
     });
   }, []);
+
+  const transitionToEmotion = useCallback((name: string, persist = false) => {
+    if (!mountedRef.current) {
+      return;
+    }
+    const normalizedName = POSES[name] ? name : 'idle';
+    if (emoName.current === normalizedName && persistentEmotionRef.current === persist && visible) {
+      return;
+    }
+    const transitionId = ++transitionIdRef.current;
+    hideTokenRef.current += 1;
+    const fromPose = targetPose.current;
+    const toPose = POSES[normalizedName] ?? POSES.idle;
+    targetPose.current = toPose;
+    emoName.current = normalizedName;
+    persistentEmotionRef.current = persist;
+    isSpeaking.current = normalizedName === 'speaking';
+    setVisible(true);
+    cleanupAllAnimations(true);
+
+    morphs.current = { eyeL: mkMorph(fromPose.eyeL, toPose.eyeL), eyeR: mkMorph(fromPose.eyeR, toPose.eyeR), mouth: mkMorph(fromPose.mouth, toPose.mouth) };
+    blinkMorphs.current = { cL: mkMorph(toPose.eyeL, EYE_BLINK), cR: mkMorph(toPose.eyeR, EYE_BLINK), oL: mkMorph(EYE_BLINK, toPose.eyeL), oR: mkMorph(EYE_BLINK, toPose.eyeR) };
+    speakMorph.current = { open: mkMorph(toPose.mouth, MOUTH_SPEAK_OPEN) };
+
+    const s = sRef.current;
+    const mp = { t: 0 };
+    const tk = EMO_TIMING[normalizedName] ?? 'bouncy';
+    const tm = TIMINGS[tk] ?? TIMINGS.bouncy;
+
+    tl.current = gsap.timeline()
+      .to(s, { opacity: 1, duration: 0.2 }, 0)
+      .to(s, { squashX: 1 + tm.squashAmt, squashY: 1 - tm.squashAmt, duration: tm.anticipation, ease: 'power2.in' })
+      .to(mp, {
+        t: 1, duration: tm.action, ease: 'back.out(1.4)',
+        onUpdate() {
+          const mt = mp.t;
+          if (morphs.current) {
+            s.eyeL = morphs.current.eyeL(mt);
+            s.eyeR = morphs.current.eyeR(mt);
+            if (!isSpeaking.current) s.mouth = morphs.current.mouth(mt);
+          }
+          s.headTilt = lerp(fromPose.headTilt, toPose.headTilt, mt);
+          s.headNod = lerp(fromPose.headNod, toPose.headNod, mt);
+        },
+      }, tm.anticipation * 0.4)
+      .to(s, { squashX: 1 - tm.overshootAmt * 0.6, squashY: 1 + tm.overshootAmt * 0.6, duration: tm.overshoot, ease: 'power2.out' })
+      .to(s, { squashX: 1, squashY: 1, duration: tm.settle, ease: 'elastic.out(1.2, 0.35)' });
+
+    scheduleBlink();
+
+    if (!persist) {
+      const hideToken = ++hideTokenRef.current;
+      hideT.current = setTimeout(() => {
+        if (!mountedRef.current || hideToken !== hideTokenRef.current || transitionId !== transitionIdRef.current) {
+          return;
+        }
+        blinkTw.current?.kill();
+        gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => {
+          if (!mountedRef.current || hideToken !== hideTokenRef.current) {
+            return;
+          }
+          setVisible(false);
+        } });
+      }, 5000);
+    }
+  }, [cleanupAllAnimations, scheduleBlink, visible]);
+
+  // ─── Render loop via GSAP ticker ───
+  useEffect(() => {
+    mountedRef.current = true;
+    const onTick = () => {
+      if (!mountedRef.current) {
+        return;
+      }
+      timeRef.current = gsap.ticker.time;
+      if (visible) tick();
+    };
+    gsap.ticker.add(onTick);
+    return () => {
+      mountedRef.current = false;
+      gsap.ticker.remove(onTick);
+    };
+  }, [visible]);
 
   // ─── Speaking mouth oscillation (v2 — bouncier, more expressive) ───
   useEffect(() => {
@@ -175,72 +282,50 @@ const FaceOverlay = () => {
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('onEmotionAction', (ev) => {
       const name = resolveEmo(ev.emotion || 'idle');
-      const fromPose = targetPose.current;
-      const toPose = POSES[name] ?? POSES.idle;
-      targetPose.current = toPose;
-      emoName.current = name;
-      isSpeaking.current = name === 'speaking';
-      setVisible(true);
-      if (hideT.current) clearTimeout(hideT.current);
-      tl.current?.kill();
-      blinkTw.current?.kill();
-
-      morphs.current = { eyeL: mkMorph(fromPose.eyeL, toPose.eyeL), eyeR: mkMorph(fromPose.eyeR, toPose.eyeR), mouth: mkMorph(fromPose.mouth, toPose.mouth) };
-      blinkMorphs.current = { cL: mkMorph(toPose.eyeL, EYE_BLINK), cR: mkMorph(toPose.eyeR, EYE_BLINK), oL: mkMorph(EYE_BLINK, toPose.eyeL), oR: mkMorph(EYE_BLINK, toPose.eyeR) };
-      speakMorph.current = { open: mkMorph(toPose.mouth, MOUTH_SPEAK_OPEN) };
-
-      const s = sRef.current;
-      const mp = { t: 0 };
-      const tk = EMO_TIMING[name] ?? 'bouncy';
-      const tm = TIMINGS[tk] ?? TIMINGS.bouncy;
-
-      tl.current = gsap.timeline()
-        .to(s, { opacity: 1, duration: 0.2 }, 0)
-        .to(s, { squashX: 1 + tm.squashAmt, squashY: 1 - tm.squashAmt, duration: tm.anticipation, ease: 'power2.in' })
-        .to(mp, {
-          t: 1, duration: tm.action, ease: 'back.out(1.4)',
-          onUpdate() {
-            const mt = mp.t;
-            if (morphs.current) {
-              s.eyeL = morphs.current.eyeL(mt);
-              s.eyeR = morphs.current.eyeR(mt);
-              if (!isSpeaking.current) s.mouth = morphs.current.mouth(mt);
-            }
-            s.headTilt = lerp(fromPose.headTilt, toPose.headTilt, mt);
-            s.headNod = lerp(fromPose.headNod, toPose.headNod, mt);
-          },
-        }, tm.anticipation * 0.4)
-        .to(s, { squashX: 1 - tm.overshootAmt * 0.6, squashY: 1 + tm.overshootAmt * 0.6, duration: tm.overshoot, ease: 'power2.out' })
-        .to(s, { squashX: 1, squashY: 1, duration: tm.settle, ease: 'elastic.out(1.2, 0.35)' });
-
-      scheduleBlink();
-
-      // Don't auto-hide during charging mode — face stays visible
-      if (!ev._persistSleeping) {
-        hideT.current = setTimeout(() => {
-          blinkTw.current?.kill();
-          gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => setVisible(false) });
-        }, 5000);
+      const persist = !!ev._persistSleeping;
+      const signature = `${name}|${persist}|${isChargingMode}`;
+      const now = Date.now();
+      if (signature === lastEmotionEventSignatureRef.current && (now - lastEmotionEventAtRef.current) < 250) {
+        return;
       }
+      lastEmotionEventSignatureRef.current = signature;
+      lastEmotionEventAtRef.current = now;
+      if (!isChargingMode && name !== 'sleeping') {
+        lastNonChargingEmotion.current = name;
+      }
+      if (isChargingMode && name !== 'sleeping') {
+        return;
+      }
+      transitionToEmotion(name, persist);
     });
 
-    return () => { sub.remove(); if (hideT.current) clearTimeout(hideT.current); tl.current?.kill(); blinkTw.current?.kill(); };
-  }, []);
+    return () => {
+      sub.remove();
+      cleanupAllAnimations();
+    };
+  }, [cleanupAllAnimations, isChargingMode, transitionToEmotion]);
 
   // ─── Charging mode: activate sleeping and keep alive ───
   useEffect(() => {
     if (isChargingMode) {
-      // Trigger sleeping emotion once, with persist flag
-      DeviceEventEmitter.emit('onEmotionAction', { emotion: 'sleeping', sentence: '', _persistSleeping: true });
+      transitionToEmotion('sleeping', true);
+      if (!sleepModeActiveRef.current) {
+        sleepModeTl.current?.kill();
+        sleepModeTl.current = gsap.timeline({ repeat: -1, yoyo: true })
+          .to(sleepLayer.current, { glow: 0.12, energy: 0.45, duration: 2.6, ease: 'sine.inOut' })
+          .to(sleepLayer.current, { glow: 0.04, energy: 0.35, duration: 2.6, ease: 'sine.inOut' });
+        sleepModeActiveRef.current = true;
+      }
     } else {
-      // Exiting charging mode — fade out if sleeping
+      sleepModeTl.current?.kill();
+      sleepModeTl.current = null;
+      sleepModeActiveRef.current = false;
+      gsap.to(sleepLayer.current, { glow: 0, energy: 1, duration: 0.35, ease: 'sine.out' });
       if (emoName.current === 'sleeping') {
-        if (hideT.current) clearTimeout(hideT.current);
-        const s = sRef.current;
-        gsap.to(s, { opacity: 0, duration: 0.4, onComplete: () => setVisible(false) });
+        transitionToEmotion(lastNonChargingEmotion.current || 'idle', false);
       }
     }
-  }, [isChargingMode]);
+  }, [isChargingMode, transitionToEmotion]);
 
   // ─── RENDER ───
   if (!visible && sRef.current.opacity === 0) return null;
@@ -250,8 +335,9 @@ const FaceOverlay = () => {
   const emo = emoName.current;
 
   // v2 ALIVE motion — bigger float, multi-layered
-  const floatY = Math.sin(t * 1.3) * 6.5 + Math.sin(t * 2.0) * 3.0 + Math.sin(t * 3.1) * 1.2;
-  const floatTilt = Math.sin(t * 0.85) * 1.5 + Math.sin(t * 1.6) * 0.6;
+  const energyFactor = isChargingMode ? sleepLayer.current.energy : 1;
+  const floatY = (Math.sin(t * 1.3) * 6.5 + Math.sin(t * 2.0) * 3.0 + Math.sin(t * 3.1) * 1.2) * energyFactor;
+  const floatTilt = (Math.sin(t * 0.85) * 1.5 + Math.sin(t * 1.6) * 0.6) * (isChargingMode ? 0.35 : 1);
   const breathAmp = targetPose.current.breathAmp ?? 1;
   const speakNod = isSpeaking.current ? Math.sin(t * 5.5) * 2.0 + Math.sin(t * 8.3) * 1.0 + Math.sin(t * 12) * 0.4 : 0;
 
@@ -308,6 +394,7 @@ const FaceOverlay = () => {
     <View style={[sty.root, { opacity: s.opacity }]}>
       <Svg viewBox="0 0 400 300" style={sty.svg}>
         <Rect width={400} height={300} fill="#060d0f" />
+        {isChargingMode && <Ellipse cx={200} cy={132} rx={165} ry={100} fill="#ffffff" opacity={sleepLayer.current.glow} />}
         <G transform={headTx}>
           {/* Left eye */}
           <G transform={`translate(${A.eyeL.x}, ${A.eyeL.y})`}>

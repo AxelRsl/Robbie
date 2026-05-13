@@ -12,15 +12,15 @@ import com.robbie.RobotApp;
 import com.robbie.platform.retail.Product;
 import com.robbie.platform.retail.RobbieConfig;
 import com.robbie.platform.retail.RobbieRecommendationEngine;
+import com.robbie.platform.robot.ChargingStateManager;
+import com.robbie.platform.robot.RobotApiService;
 import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.entity.ProductEntity;
 
-import com.ainirobot.coreservice.client.ApiListener;
 import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.CommandListener;
 import com.ainirobot.coreservice.client.Definition;
-import com.ainirobot.coreservice.client.StatusListener;
 import com.ainirobot.coreservice.client.person.PersonApi;
 import com.ainirobot.coreservice.client.person.PersonListener;
 import com.ainirobot.coreservice.client.listener.Person;
@@ -44,11 +44,15 @@ import java.util.List;
 public class RobotActionHandler {
 
     private static final String TAG = "RobotActionHandler";
+    private static final String SERVICE_OWNER = "RobotActionHandler";
     private static RobotActionHandler instance;
+    private static final int CHARGE_TIMEOUT = 120000;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final RobbieRecommendationEngine robbieRecommendationEngine;
     private final android.content.Context context;
+    private final RobotApiService robotApiService = RobotApiService.getInstance();
+    private final ChargingStateManager chargingStateManager = ChargingStateManager.getInstance();
 
     private RobotApi robotApi;
     private int faceTrackReqId = 1001;
@@ -63,11 +67,9 @@ public class RobotActionHandler {
     private boolean isNavigating = false;
     private boolean isChargingMode = false;
     private boolean isNavigatingToCharger = false;
-    private int chargeReqId = 8001;
-    private static final int CHARGE_TIMEOUT = 120000;
-    private static final int LOW_BATTERY_THRESHOLD = 20;
-    private StatusListener batteryStatusListener;
-    private boolean batteryMonitorActive = false;
+    private boolean robotServicesStarted = false;
+    private String lastChargingStatus = "idle";
+    private boolean lastChargingUiActive = false;
     private final List<String> mapPlaces = new ArrayList<>();
     private final ProceduralAnimationManager animationManager;
 
@@ -86,9 +88,8 @@ public class RobotActionHandler {
         void onProductDetail(String productId);
         void onLedEvent(String eventType, String data);
         void onModeSwitch(String mode);
-        void onChargingEvent(String status, String message);
+        void onChargingEvent(String status, String message, int batteryLevel, boolean isCharging, boolean isNavigatingToCharger, boolean robotApiConnected, boolean autoTriggered);
     }
-    
 
 
     public RobotActionHandler(android.content.Context context) {
@@ -96,6 +97,115 @@ public class RobotActionHandler {
         this.robbieRecommendationEngine = new RobbieRecommendationEngine();
         this.animationManager = ProceduralAnimationManager.getInstance(this.context);
         instance = this;
+    }
+
+    private final RobotApiService.ConnectionListener robotApiConnectionListener = new RobotApiService.ConnectionListener() {
+        @Override
+        public void onRobotApiConnected(RobotApi connectedRobotApi) {
+            robotApi = connectedRobotApi;
+            robotApiConnected = true;
+            loadPlaceList();
+            if (faceTrackActive) {
+                registerPersonDetection();
+                tryFollowVisiblePerson();
+            }
+            TourExecutor.getInstance().setChassisController(new TourExecutor.ChassisController() {
+                @Override
+                public void stopFaceTracking() {
+                    RobotActionHandler.this.stopFaceTracking();
+                }
+
+                @Override
+                public void startFaceTracking() {
+                    RobotActionHandler.this.startFaceTracking();
+                }
+            });
+            mainHandler.post(() -> LedController.getInstance().restoreDefault());
+            chargingStateManager.disableBatteryUi();
+        }
+
+        @Override
+        public void onRobotApiDisconnected() {
+            robotApiConnected = false;
+            isFollowing = false;
+            Log.w(TAG, "RobotApi disconnected");
+        }
+
+        @Override
+        public void onRobotApiDisabled() {
+            robotApiConnected = false;
+            isFollowing = false;
+            Log.w(TAG, "RobotApi disabled");
+        }
+    };
+
+    private final ChargingStateManager.Listener chargingStateListener = snapshot -> {
+        boolean previousUiActive = lastChargingUiActive;
+        String previousStatus = lastChargingStatus;
+
+        isChargingMode = snapshot.isCharging;
+        isNavigatingToCharger = snapshot.isNavigatingToCharger;
+
+        boolean uiActive = snapshot.isCharging || snapshot.isNavigatingToCharger || "charge_obstacle".equals(snapshot.status);
+        boolean statusChanged = !snapshot.status.equals(previousStatus);
+
+        if (resultCallback != null) {
+            resultCallback.onChargingEvent(
+                snapshot.status,
+                snapshot.message,
+                snapshot.batteryLevel,
+                snapshot.isCharging,
+                snapshot.isNavigatingToCharger,
+                snapshot.robotApiConnected,
+                snapshot.autoTriggered
+            );
+        }
+
+        if (resultCallback != null && uiActive != previousUiActive) {
+            resultCallback.onModeSwitch(uiActive ? "charging" : "home");
+        }
+
+        if (statusChanged) {
+            if ("navigating_to_charger".equals(snapshot.status)) {
+                if (agentBridge != null) {
+                    agentBridge.tts(
+                        snapshot.autoTriggered
+                            ? "Mi bateria esta baja. Voy a cargarme, vuelvo pronto."
+                            : "Voy a mi estacion de carga. Cuando quieras que regrese, solo dime.",
+                        10000
+                    );
+                }
+            } else if ("charging".equals(snapshot.status)) {
+                if (agentBridge != null) {
+                    agentBridge.tts("Ya estoy cargando. Dime 'deja de cargar' cuando quieras que regrese.", 10000);
+                }
+            } else if ("charge_failed".equals(snapshot.status)) {
+                if (agentBridge != null) {
+                    agentBridge.tts(snapshot.message == null || snapshot.message.isEmpty() ? "No pude llegar al cargador." : snapshot.message, 8000);
+                }
+                mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+            } else if ("charge_stopped".equals(snapshot.status)) {
+                if (agentBridge != null) {
+                    agentBridge.tts("De acuerdo, dejo de cargar. Estoy listo para ayudarte.", 10000);
+                }
+                mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+            }
+        }
+
+        lastChargingStatus = snapshot.status;
+        lastChargingUiActive = uiActive;
+    };
+
+    private void ensureRobotServicesStarted() {
+        robotApiService.retain(SERVICE_OWNER, context);
+        chargingStateManager.start(context, SERVICE_OWNER);
+        robotApiService.connect(context, null);
+        if (robotServicesStarted) {
+            return;
+        }
+        robotServicesStarted = true;
+        robotApiService.addConnectionListener(robotApiConnectionListener);
+        chargingStateManager.addListener(chargingStateListener);
     }
 
     /**
@@ -761,56 +871,18 @@ public class RobotActionHandler {
     // ==================== Face Tracking ====================
 
     public void startFaceTracking() {
-        try {
-            robotApi = RobotApi.getInstance();
-            robotApi.connectServer(context, new ApiListener() {
-                @Override
-                public void handleApiDisabled() {
-                    Log.w(TAG, "RobotApi disabled");
-                }
-
-                @Override
-                public void handleApiConnected() {
-                    robotApiConnected = true;
-                    faceTrackActive = true;
-                    Log.d(TAG, "RobotApi connected - starting person detection");
-                    registerPersonDetection();
-                    tryFollowVisiblePerson();
-                    loadPlaceList();
-
-                    // Wire chassis controller on the TourExecutor singleton so tours
-                    // started from both voice AND the HTTP panel can stop/start face tracking
-                    TourExecutor.getInstance().setChassisController(new TourExecutor.ChassisController() {
-                        @Override
-                        public void stopFaceTracking() {
-                            RobotActionHandler.this.stopFaceTracking();
-                        }
-                        @Override
-                        public void startFaceTracking() {
-                            RobotActionHandler.this.startFaceTracking();
-                        }
-                    });
-                    mainHandler.post(() -> LedController.getInstance().restoreDefault());
-
-                    // Start battery monitor for autonomous charging
-                    startBatteryMonitor();
-                    // Disable system battery UI so our app keeps control during charging
-                    try { robotApi.disableBattery(); } catch (Exception ignored) {}
-                }
-
-                @Override
-                public void handleApiDisconnected() {
-                    robotApiConnected = false;
-                    isFollowing = false;
-                    Log.w(TAG, "RobotApi disconnected");
-                }
-            });
-        } catch (Exception e) {
-            Log.w(TAG, "Could not init RobotApi", e);
+        ensureRobotServicesStarted();
+        faceTrackActive = true;
+        if (robotApiConnected) {
+            registerPersonDetection();
+            tryFollowVisiblePerson();
         }
     }
 
     private void registerPersonDetection() {
+        if (personListener != null) {
+            return;
+        }
         personListener = new PersonListener() {
             @Override
             public void personChanged() {
@@ -1145,7 +1217,8 @@ public class RobotActionHandler {
      * @param autoTriggered true si fue disparado automaticamente por bateria baja
      */
     private void startChargingSequence(boolean autoTriggered) {
-        if (!robotApiConnected || robotApi == null) {
+        ensureRobotServicesStarted();
+        if (!robotApiService.isConnected()) {
             if (agentBridge != null)
                 agentBridge.tts("No puedo ir a cargar en este momento, el sistema de movimiento no esta conectado.", 10000);
             return;
@@ -1154,77 +1227,7 @@ public class RobotActionHandler {
         // Stop face tracking and navigation if active
         if (isNavigating) stopNavigation();
         stopFaceTracking();
-
-        isNavigatingToCharger = true;
-        isChargingMode = true;
-
-        // Notify RN to show charging screen
-        if (resultCallback != null) {
-            resultCallback.onChargingEvent("navigating_to_charger", autoTriggered ? "Bateria baja, yendo a cargar..." : "Yendo al cargador...");
-            resultCallback.onModeSwitch("charging");
-        }
-
-        String ttsMsg = autoTriggered
-            ? "Mi bateria esta baja. Voy a cargarme, vuelvo pronto."
-            : "Voy a mi estacion de carga. Cuando quieras que regrese, solo dime.";
-        if (agentBridge != null) agentBridge.tts(ttsMsg, 10000);
-
-        try {
-            robotApi.startNaviToAutoChargeAction(chargeReqId++, CHARGE_TIMEOUT, 0.3, 30000L, new ActionListener() {
-                @Override
-                public void onResult(int status, String responseString) {
-                    isNavigatingToCharger = false;
-                    if (status == Definition.RESULT_OK) {
-                        isChargingMode = true;
-                        Log.i(TAG, "Auto-charge: arrived at dock and charging");
-                        if (resultCallback != null)
-                            resultCallback.onChargingEvent("charging", "Cargando...");
-                        if (agentBridge != null)
-                            agentBridge.tts("Ya estoy cargando. Dime 'deja de cargar' cuando quieras que regrese.", 10000);
-                    } else {
-                        isChargingMode = false;
-                        Log.w(TAG, "Auto-charge failed: status=" + status);
-                        if (resultCallback != null) {
-                            resultCallback.onChargingEvent("charge_failed", "No se pudo llegar al cargador");
-                            resultCallback.onModeSwitch("home");
-                        }
-                        if (agentBridge != null)
-                            agentBridge.tts("No pude llegar al cargador.", 8000);
-                        mainHandler.postDelayed(() -> startFaceTracking(), 2000);
-                    }
-                }
-
-                @Override
-                public void onError(int errorCode, String errorString) {
-                    isNavigatingToCharger = false;
-                    isChargingMode = false;
-                    Log.e(TAG, "Auto-charge error: code=" + errorCode + " msg=" + errorString);
-                    if (resultCallback != null) {
-                        resultCallback.onChargingEvent("charge_failed", "Error: " + errorString);
-                        resultCallback.onModeSwitch("home");
-                    }
-                    if (agentBridge != null)
-                        agentBridge.tts("Hubo un error al intentar ir al cargador.", 8000);
-                    mainHandler.postDelayed(() -> startFaceTracking(), 2000);
-                }
-
-                @Override
-                public void onStatusUpdate(int status, String data) {
-                    Log.d(TAG, "Auto-charge status: " + status + " data=" + data);
-                    if (status == Definition.STATUS_NAVI_AVOID) {
-                        if (resultCallback != null)
-                            resultCallback.onChargingEvent("charge_obstacle", "Hay un obstaculo en el camino");
-                    }
-                }
-            });
-        } catch (Exception e) {
-            isNavigatingToCharger = false;
-            isChargingMode = false;
-            Log.e(TAG, "Error starting auto-charge", e);
-            if (agentBridge != null) agentBridge.tts("Error al intentar ir a cargar.", 8000);
-            if (resultCallback != null) resultCallback.onModeSwitch("home");
-            mainHandler.postDelayed(() -> startFaceTracking(), 2000);
-        }
+        chargingStateManager.requestStartCharging(autoTriggered);
     }
 
     private void stopChargingSequence() {
@@ -1233,38 +1236,7 @@ public class RobotActionHandler {
                 agentBridge.tts("No estoy cargando en este momento.", 8000);
             return;
         }
-
-        Log.i(TAG, "Stopping charging sequence");
-        try {
-            if (robotApi != null) {
-                robotApi.stopAutoChargeAction(chargeReqId++, true);
-                // disableBattery() required before leaveChargingPile per SDK docs
-                robotApi.disableBattery();
-                // Move forward off the charging pile (speed=0.3 m/s, distance=0.5m)
-                robotApi.leaveChargingPile(chargeReqId++, 0.3f, 0.5f, new CommandListener() {
-                    @Override
-                    public void onResult(int result, String message) {
-                        Log.d(TAG, "leaveChargingPile result: " + result + " msg=" + message);
-                        // Re-enable battery UI after leaving
-                        try { robotApi.enableBattery(); } catch (Exception ignored) {}
-                    }
-                });
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error stopping auto-charge", e);
-        }
-
-        isChargingMode = false;
-        isNavigatingToCharger = false;
-
-        if (resultCallback != null) {
-            resultCallback.onChargingEvent("charge_stopped", "Carga detenida");
-            resultCallback.onModeSwitch("home");
-        }
-        if (agentBridge != null)
-            agentBridge.tts("De acuerdo, dejo de cargar. Estoy listo para ayudarte.", 10000);
-
-        mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+        chargingStateManager.requestStopCharging();
     }
 
     // ==================== Battery Monitor ====================
@@ -1274,54 +1246,11 @@ public class RobotActionHandler {
      * Si el nivel cae por debajo de LOW_BATTERY_THRESHOLD, inicia carga automatica.
      */
     public void startBatteryMonitor() {
-        if (batteryMonitorActive || robotApi == null) return;
-
-        try {
-            batteryStatusListener = new StatusListener() {
-                @Override
-                public void onStatusUpdate(String type, String data) {
-                    try {
-                        Log.d(TAG, "Battery status: " + data);
-                        JSONObject json = new JSONObject(data);
-                        int level = json.optInt("level", -1);
-                        boolean charging = json.optBoolean("isCharging", false);
-
-                        // Emit battery event to RN
-                        if (resultCallback != null) {
-                            resultCallback.onChargingEvent("battery_update",
-                                "{\"level\":" + level + ",\"isCharging\":" + charging + "}");
-                        }
-
-                        // Auto-charge when battery low and not already charging
-                        if (level >= 0 && level < LOW_BATTERY_THRESHOLD && !charging
-                                && !isChargingMode && !isNavigatingToCharger) {
-                            Log.w(TAG, "Battery low (" + level + "%), starting auto-charge");
-                            mainHandler.post(() -> startChargingSequence(true));
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "Error parsing battery status", e);
-                    }
-                }
-            };
-
-            robotApi.registerStatusListener(Definition.STATUS_BATTERY, batteryStatusListener);
-            batteryMonitorActive = true;
-            Log.i(TAG, "Battery monitor started (threshold=" + LOW_BATTERY_THRESHOLD + "%)");
-        } catch (Exception e) {
-            Log.e(TAG, "Error starting battery monitor", e);
-        }
+        ensureRobotServicesStarted();
     }
 
     public void stopBatteryMonitor() {
-        if (batteryStatusListener != null && robotApi != null) {
-            try {
-                robotApi.unregisterStatusListener(batteryStatusListener);
-            } catch (Exception e) {
-                Log.w(TAG, "Error stopping battery monitor", e);
-            }
-            batteryStatusListener = null;
-        }
-        batteryMonitorActive = false;
+        chargingStateManager.stop(SERVICE_OWNER);
     }
 
     public boolean isChargingMode() {
@@ -1329,9 +1258,12 @@ public class RobotActionHandler {
     }
 
     public void destroy() {
+        chargingStateManager.removeListener(chargingStateListener);
+        robotApiService.removeConnectionListener(robotApiConnectionListener);
         stopBatteryMonitor();
         stopFaceTracking();
-        if (robotApi != null) robotApi.disconnectApi();
+        robotApiService.release(SERVICE_OWNER);
+        robotServicesStarted = false;
     }
 
     public boolean isNavigating() {

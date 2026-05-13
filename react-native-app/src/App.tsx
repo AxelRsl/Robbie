@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import FaceOverlay from '@/components/FaceOverlay';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
 import { HomeScreen } from '@/screens/HomeScreen';
@@ -10,19 +10,24 @@ import { NavigationScreen } from '@/screens/NavigationScreen';
 import { ChargingScreen } from '@/screens/ChargingScreen';
 import { ProductDetailModal } from '@/components/ProductDetailModal';
 import { CloudApi } from '@/services/CloudApi';
+import { ChargingProvider } from '@/contexts/ChargingContext';
 import { useAppStore } from '@/stores/useAppStore';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 
 const { RobotSkillModule: SkillModule } = NativeModules;
 
 function ChargingStopButton() {
-  const { setCurrentMode, setChargingStatus } = useAppStore();
+  const charging = useAppStore((s) => s.charging);
+  const [isStopping, setIsStopping] = useState(false);
   const handleStop = async () => {
+    if (isStopping || (!charging.isCharging && !charging.isNavigatingToCharger)) {
+      return;
+    }
+    setIsStopping(true);
     try {
       if (SkillModule) await SkillModule.executeAction('com.robbie.action.STOP_CHARGE', '{}');
     } catch (e) { console.error('[ChargingStopButton]', e); }
-    setChargingStatus('', '');
-    setCurrentMode('home');
+    finally { setIsStopping(false); }
   };
   return (
     <View style={{
@@ -41,13 +46,14 @@ function ChargingStopButton() {
         style={{
           paddingHorizontal: 28,
           paddingVertical: 12,
-          backgroundColor: 'rgba(239, 68, 68, 0.85)',
+          backgroundColor: isStopping ? 'rgba(120, 120, 120, 0.85)' : 'rgba(239, 68, 68, 0.85)',
           borderRadius: 24,
           elevation: 99999,
         }}
+        disabled={isStopping}
       >
         <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '700' }}>
-          Dejar de cargar
+          {isStopping ? 'Deteniendo carga...' : 'Dejar de cargar'}
         </Text>
       </TouchableOpacity>
     </View>
@@ -55,7 +61,8 @@ function ChargingStopButton() {
 }
 
 function AppContent() {
-  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, setChargingStatus } = useAppStore();
+  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, charging } = useAppStore();
+  const lastChargingUiModeRef = useRef(false);
 
   useEffect(() => {
     // Cargar productos al inicio de la app
@@ -86,12 +93,6 @@ function AppContent() {
       }
     });
 
-    // Escuchar eventos de carga
-    const chargingListener = eventEmitter.addListener('onChargingStatus', (event) => {
-      console.log('[App] Charging event:', event);
-      setChargingStatus(event.status || '', event.message || '');
-    });
-
     // Escuchar eventos de cambio de modo desde comandos de voz
     const modeSwitchListener = eventEmitter.addListener('onModeSwitch', (event) => {
       console.log('[App] Mode switch event:', event);
@@ -109,9 +110,8 @@ function AppContent() {
     return () => {
       navigationListener.remove();
       modeSwitchListener.remove();
-      chargingListener.remove();
     };
-  }, [setNavigation, setCurrentMode, setChargingStatus]);
+  }, [setNavigation, setCurrentMode]);
 
   // Refrescar productos cada vez que se entra a retail (por si el panel los actualizó)
   useEffect(() => {
@@ -127,6 +127,22 @@ function AppContent() {
       });
     }
   }, [currentMode]);
+
+  useEffect(() => {
+    const shouldShowChargingUi = charging.isCharging || charging.isNavigatingToCharger;
+    if (shouldShowChargingUi) {
+      lastChargingUiModeRef.current = true;
+      if (currentMode !== 'charging') {
+        setCurrentMode('charging');
+      }
+      return;
+    }
+
+    if (lastChargingUiModeRef.current && currentMode === 'charging') {
+      lastChargingUiModeRef.current = false;
+      setCurrentMode('home');
+    }
+  }, [charging.isCharging, charging.isNavigatingToCharger, currentMode, setCurrentMode]);
 
   const renderScreen = () => {
     switch (currentMode) {
@@ -159,7 +175,7 @@ function AppContent() {
         />
       )}
       <FaceOverlay />
-      {currentMode === 'charging' && <ChargingStopButton />}
+      {(charging.isCharging || charging.isNavigatingToCharger || currentMode === 'charging') && <ChargingStopButton />}
     </View>
   );
 }
@@ -167,7 +183,9 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <ChargingProvider>
+        <AppContent />
+      </ChargingProvider>
     </ThemeProvider>
   );
 }

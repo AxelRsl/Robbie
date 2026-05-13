@@ -7,6 +7,36 @@ const DEFAULT_UI_CONFIG: UiConfig = {
   retailColumns: 4,
 };
 
+export interface ChargingUiState {
+  status: string;
+  message: string;
+  batteryLevel: number | null;
+  isCharging: boolean;
+  isNavigatingToCharger: boolean;
+  robotApiConnected: boolean;
+  autoTriggered: boolean;
+}
+
+const DEFAULT_CHARGING_STATE: ChargingUiState = {
+  status: '',
+  message: '',
+  batteryLevel: null,
+  isCharging: false,
+  isNavigatingToCharger: false,
+  robotApiConnected: false,
+  autoTriggered: false,
+};
+
+function isSameChargingState(a: ChargingUiState, b: ChargingUiState) {
+  return a.status === b.status
+    && a.message === b.message
+    && a.batteryLevel === b.batteryLevel
+    && a.isCharging === b.isCharging
+    && a.isNavigatingToCharger === b.isNavigatingToCharger
+    && a.robotApiConnected === b.robotApiConnected
+    && a.autoTriggered === b.autoTriggered;
+}
+
 interface AppState {
   retailTemplate: RetailTemplate;
   menuTemplate: MenuTemplate;
@@ -22,9 +52,10 @@ interface AppState {
   productsLoaded: boolean;
   sceneProject: SceneProject | null;
   sceneProjectLoaded: boolean;
+  charging: ChargingUiState;
   chargingStatus: string;
   chargingMessage: string;
-  
+
   setRetailTemplate: (template: RetailTemplate) => void;
   setMenuTemplate: (template: MenuTemplate) => void;
   setPromoTemplate: (template: PromoTemplate) => void;
@@ -39,6 +70,8 @@ interface AppState {
   setProducts: (products: Product[]) => void;
   setProductsLoaded: (loaded: boolean) => void;
   setSceneProject: (project: SceneProject | null) => void;
+  setChargingState: (state: Partial<ChargingUiState>) => void;
+  resetChargingState: (force?: boolean) => void;
   setChargingStatus: (status: string, message: string) => void;
 }
 
@@ -57,9 +90,10 @@ export const useAppStore = create<AppState>((set) => ({
   productsLoaded: false,
   sceneProject: null,
   sceneProjectLoaded: false,
+  charging: DEFAULT_CHARGING_STATE,
   chargingStatus: '',
   chargingMessage: '',
-  
+
   setRetailTemplate: (template) => set({ retailTemplate: template }),
   setMenuTemplate: (template) => set({ menuTemplate: template }),
   setPromoTemplate: (template) => set({ promoTemplate: template }),
@@ -82,5 +116,39 @@ export const useAppStore = create<AppState>((set) => ({
   setProducts: (products) => set({ products, productsLoaded: true }),
   setProductsLoaded: (loaded) => set({ productsLoaded: loaded }),
   setSceneProject: (project) => set({ sceneProject: project, sceneProjectLoaded: true }),
-  setChargingStatus: (status, message) => set({ chargingStatus: status, chargingMessage: message }),
+  setChargingState: (chargingState) => set((state) => {
+    const charging = { ...state.charging, ...chargingState };
+    if (isSameChargingState(state.charging, charging)) {
+      return state;
+    }
+    return {
+      charging,
+      chargingStatus: charging.status,
+      chargingMessage: charging.message,
+    };
+  }),
+  resetChargingState: (force = false) => set((state) => {
+    if (!force && (state.charging.isCharging || state.charging.isNavigatingToCharger)) {
+      return state;
+    }
+    if (isSameChargingState(state.charging, DEFAULT_CHARGING_STATE)) {
+      return state;
+    }
+    return {
+      charging: DEFAULT_CHARGING_STATE,
+      chargingStatus: '',
+      chargingMessage: '',
+    };
+  }),
+  setChargingStatus: (status, message) => set((state) => ({
+    charging: {
+      ...state.charging,
+      status,
+      message,
+      isCharging: status === 'charging',
+      isNavigatingToCharger: status === 'navigating_to_charger' || status === 'charge_obstacle',
+    },
+    chargingStatus: status,
+    chargingMessage: message,
+  })),
 }));
