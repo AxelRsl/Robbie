@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import FaceOverlay from '@/components/FaceOverlay';
+import FaceOverlayWebView from '@/components/FaceOverlayWebView';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { MenuScreen } from '@/screens/MenuScreen';
@@ -63,6 +63,7 @@ function ChargingStopButton() {
 function AppContent() {
   const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, charging } = useAppStore();
   const lastChargingUiModeRef = useRef(false);
+  const shouldShowChargingUi = charging.isCharging || charging.isNavigatingToCharger || charging.status === 'charge_obstacle';
 
   useEffect(() => {
     // Cargar productos al inicio de la app
@@ -129,7 +130,6 @@ function AppContent() {
   }, [currentMode]);
 
   useEffect(() => {
-    const shouldShowChargingUi = charging.isCharging || charging.isNavigatingToCharger;
     if (shouldShowChargingUi) {
       lastChargingUiModeRef.current = true;
       if (currentMode !== 'charging') {
@@ -142,7 +142,7 @@ function AppContent() {
       lastChargingUiModeRef.current = false;
       setCurrentMode('home');
     }
-  }, [charging.isCharging, charging.isNavigatingToCharger, currentMode, setCurrentMode]);
+  }, [currentMode, setCurrentMode, shouldShowChargingUi]);
 
   const renderScreen = () => {
     switch (currentMode) {
@@ -174,8 +174,8 @@ function AppContent() {
           onClose={() => setSelectedProduct(null)}
         />
       )}
-      <FaceOverlay />
-      {(charging.isCharging || charging.isNavigatingToCharger || currentMode === 'charging') && <ChargingStopButton />}
+      <FaceOverlayWebView />
+      {(shouldShowChargingUi || currentMode === 'charging') && <ChargingStopButton />}
     </View>
   );
 }

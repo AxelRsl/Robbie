@@ -22,6 +22,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private static final String TAG = "ChargingStateManager";
     private static final int LOW_BATTERY_THRESHOLD = 20;
     private static final int CHARGE_TIMEOUT_MS = 120000;
+    private static final long CHARGE_CONFIRMATION_TIMEOUT_MS = 10000L;
     private static final long BATTERY_EVENT_DEBOUNCE_MS = 750L;
     private static final long MALFORMED_PAYLOAD_LOG_DEBOUNCE_MS = 5000L;
     private static final long TRANSITION_LOCK_TIMEOUT_MS = 45000L;
@@ -73,6 +74,8 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private String lastBatteryPayload = "";
     private Boolean pendingStartAutoTriggered = null;
     private boolean pendingStopOnReconnect = false;
+    private boolean awaitingChargeConfirmation = false;
+    private Runnable chargeConfirmationTimeoutRunnable;
 
     private String status = "idle";
     private String message = "";
@@ -154,6 +157,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
 
     public synchronized void requestStartCharging(boolean autoTriggeredRequest) {
         releaseStaleTransitionLockIfNeeded();
+        cancelChargeConfirmationTimeout();
         RobotApi api = robotApiService.getRobotApi();
         if (!robotApiService.isConnected() || api == null) {
             pendingStartAutoTriggered = autoTriggeredRequest;
@@ -189,10 +193,12 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                     }
                     finishTransitionLock(operationToken, "start");
                     if (result == Definition.RESULT_OK) {
-                        isNavigatingToCharger = false;
-                        isCharging = true;
-                        updateState("charging", "Cargando...", batteryLevel, true, false, robotApiConnected, autoTriggered);
+                        isNavigatingToCharger = true;
+                        isCharging = false;
+                        scheduleChargeConfirmationTimeout(operationToken);
+                        updateState("charging_connecting", "Acoplando al cargador...", batteryLevel, false, true, robotApiConnected, autoTriggered);
                     } else {
+                        cancelChargeConfirmationTimeout();
                         isNavigatingToCharger = false;
                         isCharging = false;
                         updateState("charge_failed", "No se pudo llegar al cargador", batteryLevel, false, false, robotApiConnected, autoTriggered);
@@ -207,6 +213,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                         return;
                     }
                     finishTransitionLock(operationToken, "start");
+                    cancelChargeConfirmationTimeout();
                     isNavigatingToCharger = false;
                     isCharging = false;
                     updateState("charge_failed", "Error: " + errorString, batteryLevel, false, false, robotApiConnected, autoTriggered);
@@ -224,10 +231,12 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                         updateState("navigating_to_charger", autoTriggered ? "Bateria baja, yendo a cargar..." : "Yendo al cargador...", batteryLevel, isCharging, isNavigatingToCharger, robotApiConnected, autoTriggered);
                     } else if (statusCode == Definition.STATUS_NAVI_GLOBAL_PATH_FAILED) {
                         finishTransitionLock(operationToken, "start");
+                        cancelChargeConfirmationTimeout();
                         isNavigatingToCharger = false;
                         updateState("charge_failed", "Ruta al cargador no encontrada", batteryLevel, false, false, robotApiConnected, autoTriggered);
                     } else if (statusCode == Definition.STATUS_NAVI_OUT_MAP) {
                         finishTransitionLock(operationToken, "start");
+                        cancelChargeConfirmationTimeout();
                         isNavigatingToCharger = false;
                         updateState("charge_failed", "Cargador fuera del mapa", batteryLevel, false, false, robotApiConnected, autoTriggered);
                     }
@@ -235,6 +244,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             });
         } catch (Exception e) {
             finishTransitionLock(operationToken, "start");
+            cancelChargeConfirmationTimeout();
             isNavigatingToCharger = false;
             isCharging = false;
             Log.e(TAG, "Error starting auto charge", e);
@@ -245,6 +255,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
 
     public synchronized void requestStopCharging() {
         releaseStaleTransitionLockIfNeeded();
+        cancelChargeConfirmationTimeout();
         RobotApi api = robotApiService.getRobotApi();
         boolean wasCharging = isCharging || "charging".equals(status);
         boolean wasNavigating = isNavigatingToCharger || "navigating_to_charger".equals(status) || "charge_obstacle".equals(status);
@@ -404,6 +415,31 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
         batteryListenerRegistered = false;
     }
 
+    private synchronized void scheduleChargeConfirmationTimeout(long operationToken) {
+        cancelChargeConfirmationTimeout();
+        awaitingChargeConfirmation = true;
+        chargeConfirmationTimeoutRunnable = () -> {
+            synchronized (ChargingStateManager.this) {
+                if (!awaitingChargeConfirmation || isCharging || operationToken != activeOperationToken) {
+                    return;
+                }
+                awaitingChargeConfirmation = false;
+                isNavigatingToCharger = false;
+                autoTriggered = false;
+                updateState("charge_failed", "No se confirmo carga real", batteryLevel, false, false, robotApiConnected, false);
+            }
+        };
+        mainHandler.postDelayed(chargeConfirmationTimeoutRunnable, CHARGE_CONFIRMATION_TIMEOUT_MS);
+    }
+
+    private synchronized void cancelChargeConfirmationTimeout() {
+        awaitingChargeConfirmation = false;
+        if (chargeConfirmationTimeoutRunnable != null) {
+            mainHandler.removeCallbacks(chargeConfirmationTimeoutRunnable);
+            chargeConfirmationTimeoutRunnable = null;
+        }
+    }
+
     private synchronized void handleBatteryUpdate(String data) {
         long now = SystemClock.elapsedRealtime();
         if (data == null || data.trim().isEmpty()) {
@@ -436,13 +472,14 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             }
 
             if (nextIsCharging) {
+                cancelChargeConfirmationTimeout();
                 finishTransitionLock(activeOperationToken, activeOperation);
             }
 
             if (nextIsCharging) {
                 isNavigatingToCharger = false;
                 updateState("charging", "Cargando...", batteryLevel, true, false, robotApiConnected, autoTriggered);
-            } else if (!isNavigatingToCharger && "charging".equals(status)) {
+            } else if (!isNavigatingToCharger && ("charging".equals(status) || "charging_connecting".equals(status))) {
                 updateState("idle", "", batteryLevel, false, false, robotApiConnected, false);
             } else {
                 updateState(status, message, batteryLevel, isCharging, isNavigatingToCharger, robotApiConnected, autoTriggered);

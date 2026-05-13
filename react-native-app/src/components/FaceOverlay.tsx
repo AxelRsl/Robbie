@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, StyleSheet, DeviceEventEmitter } from 'react-native';
 import { useCharging } from '@/contexts/ChargingContext';
 import { useAppStore } from '@/stores/useAppStore';
-import Svg, { Rect, G, Path, Ellipse, Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Rect, G, Path, Ellipse, Circle, Line, Text as SvgText, Defs, LinearGradient, RadialGradient, Stop, ClipPath, Pattern } from 'react-native-svg';
 import gsap from 'gsap';
 import { interpolate } from 'flubber';
 
@@ -18,6 +18,11 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 // ─── Anchors (v4 — compact Dasai Mochi mascot) ───
 const A = { eyeL: { x: 145, y: 118 }, eyeR: { x: 255, y: 118 }, mouth: { x: 200, y: 185 } };
 const CX = 200, CY = 150;
+const LCD_STAGE = { width: 1920, height: 1080, x: 72, y: 44, w: 1776, h: 992, r: 64 };
+const FACE_CANVAS = { width: 400, height: 300 };
+const FACE_SCALE = Math.min(LCD_STAGE.w / FACE_CANVAS.width, LCD_STAGE.h / FACE_CANVAS.height);
+const FACE_OFFSET_X = LCD_STAGE.x + (LCD_STAGE.w - FACE_CANVAS.width * FACE_SCALE) / 2;
+const FACE_OFFSET_Y = LCD_STAGE.y + (LCD_STAGE.h - FACE_CANVAS.height * FACE_SCALE) / 2;
 
 // ─── SVG Paths (from paths.ts — identical to web, v4 Dasai Mochi capsules) ───
 const EYE: Record<string, string> = {
@@ -93,7 +98,10 @@ const resolveEmo = (name: string): string => {
 const FaceOverlay = () => {
   const currentMode = useAppStore(s => s.currentMode);
   const charging = useCharging();
-  const isChargingMode = currentMode === 'charging' || charging.isCharging || charging.isNavigatingToCharger;
+  const isChargingMode = currentMode === 'charging'
+    || charging.isCharging
+    || charging.isNavigatingToCharger
+    || charging.status === 'charge_obstacle';
   const [visible, setVisible] = useState(false);
   const [, setTick] = useState(0);
   const tick = useCallback(() => setTick(n => n + 1), []);
@@ -141,6 +149,26 @@ const FaceOverlay = () => {
     }
   }, []);
 
+  const primeEmotion = useCallback((name: string, persist = false) => {
+    const normalizedName = POSES[name] ? name : 'idle';
+    const pose = POSES[normalizedName] ?? POSES.idle;
+    targetPose.current = pose;
+    emoName.current = normalizedName;
+    persistentEmotionRef.current = persist;
+    isSpeaking.current = normalizedName === 'speaking';
+    sRef.current.eyeL = pose.eyeL;
+    sRef.current.eyeR = pose.eyeR;
+    sRef.current.mouth = pose.mouth;
+    sRef.current.headTilt = pose.headTilt;
+    sRef.current.headNod = pose.headNod;
+    sRef.current.squashX = 1;
+    sRef.current.squashY = 1;
+    sRef.current.opacity = 1;
+    blinkMorphs.current = { cL: mkMorph(pose.eyeL, EYE_BLINK), cR: mkMorph(pose.eyeR, EYE_BLINK), oL: mkMorph(EYE_BLINK, pose.eyeL), oR: mkMorph(EYE_BLINK, pose.eyeR) };
+    speakMorph.current = { open: mkMorph(pose.mouth, MOUTH_SPEAK_OPEN) };
+    setVisible(true);
+  }, []);
+
   const scheduleBlink = useCallback(() => {
     if (!mountedRef.current) {
       return;
@@ -163,9 +191,6 @@ const FaceOverlay = () => {
   }, []);
 
   const transitionToEmotion = useCallback((name: string, persist = false) => {
-    if (!mountedRef.current) {
-      return;
-    }
     const normalizedName = POSES[name] ? name : 'idle';
     if (emoName.current === normalizedName && persistentEmotionRef.current === persist && visible) {
       return;
@@ -308,6 +333,9 @@ const FaceOverlay = () => {
   // ─── Charging mode: activate sleeping and keep alive ───
   useEffect(() => {
     if (isChargingMode) {
+      if (!visible || sRef.current.opacity === 0) {
+        primeEmotion('sleeping', true);
+      }
       transitionToEmotion('sleeping', true);
       if (!sleepModeActiveRef.current) {
         sleepModeTl.current?.kill();
@@ -325,7 +353,7 @@ const FaceOverlay = () => {
         transitionToEmotion(lastNonChargingEmotion.current || 'idle', false);
       }
     }
-  }, [isChargingMode, transitionToEmotion]);
+  }, [isChargingMode, primeEmotion, transitionToEmotion, visible]);
 
   // ─── RENDER ───
   if (!visible && sRef.current.opacity === 0) return null;
@@ -333,6 +361,11 @@ const FaceOverlay = () => {
   const s = sRef.current;
   const t = timeRef.current;
   const emo = emoName.current;
+  const faceStageTransform = `translate(${FACE_OFFSET_X}, ${FACE_OFFSET_Y}) scale(${FACE_SCALE})`;
+  const screenFlashOpacity = isChargingMode ? 0.03 : 0.015;
+  const ambientGlowOpacity = isChargingMode ? 0.12 : 0.07;
+  const sheenWidth = 420;
+  const sheenTravel = LCD_STAGE.x - sheenWidth + ((t * 220) % (LCD_STAGE.w + sheenWidth * 2));
 
   // v2 ALIVE motion — bigger float, multi-layered
   const energyFactor = isChargingMode ? sleepLayer.current.energy : 1;
@@ -391,21 +424,75 @@ const FaceOverlay = () => {
   const dop1 = 0.45 + Math.sin(t * 5) * 0.35, dop2 = 0.45 + Math.sin(t * 5 + 1.3) * 0.35, dop3 = 0.45 + Math.sin(t * 5 + 2.6) * 0.35;
 
   return (
-    <View style={[sty.root, { opacity: s.opacity }]}>
-      <Svg viewBox="0 0 400 300" style={sty.svg}>
-        <Rect width={400} height={300} fill="#060d0f" />
-        {isChargingMode && <Ellipse cx={200} cy={132} rx={165} ry={100} fill="#ffffff" opacity={sleepLayer.current.glow} />}
-        <G transform={headTx}>
+    <View pointerEvents="none" style={[sty.root, { opacity: s.opacity }]}>
+      <Svg viewBox={`0 0 ${LCD_STAGE.width} ${LCD_STAGE.height}`} style={sty.svg}>
+        <Defs>
+          <LinearGradient id="lcdStageBg" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor="#020607" />
+            <Stop offset="100%" stopColor="#071518" />
+          </LinearGradient>
+          <LinearGradient id="lcdScreenBg" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#0a1113" />
+            <Stop offset="100%" stopColor="#030607" />
+          </LinearGradient>
+          <LinearGradient id="lcdSheen" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
+            <Stop offset="50%" stopColor="#ffffff" stopOpacity="0.06" />
+            <Stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </LinearGradient>
+          <RadialGradient id="lcdVignette" cx="50%" cy="50%" rx="65%" ry="65%">
+            <Stop offset="0%" stopColor="#000000" stopOpacity="0" />
+            <Stop offset="100%" stopColor="#000000" stopOpacity="0.58" />
+          </RadialGradient>
+          <RadialGradient id="lcdAmbientScreen" cx="42%" cy="38%" rx="42%" ry="42%">
+            <Stop offset="0%" stopColor="#61f3ff" stopOpacity="0.16" />
+            <Stop offset="100%" stopColor="#61f3ff" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="rfAmbientGlow" cx="50%" cy="45%" rx="50%" ry="50%">
+            <Stop offset="0%" stopColor="#ffffff" stopOpacity={ambientGlowOpacity} />
+            <Stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </RadialGradient>
+          <Pattern id="lcdScanlines" patternUnits="userSpaceOnUse" width="12" height="12">
+            <Rect x="0" y="0" width="12" height="1" fill="#ffffff" opacity="0.035" />
+            <Rect x="0" y="6" width="12" height="1" fill="#ffffff" opacity="0.02" />
+          </Pattern>
+          <ClipPath id="lcdScreenClip">
+            <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} />
+          </ClipPath>
+        </Defs>
+        <Rect width={LCD_STAGE.width} height={LCD_STAGE.height} fill="url(#lcdStageBg)" />
+        <Ellipse cx={LCD_STAGE.width * 0.42} cy={LCD_STAGE.height * 0.38} rx={540} ry={360} fill="#61f3ff" opacity={0.08} />
+        <Ellipse cx={LCD_STAGE.width * 0.5} cy={LCD_STAGE.height * 0.52} rx={760} ry={420} fill="#ffffff" opacity={0.025} />
+        <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} fill="url(#lcdScreenBg)" />
+        <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} fill="url(#lcdAmbientScreen)" />
+        <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} fill="#ffffff" opacity={screenFlashOpacity} />
+        <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} fill="url(#lcdScanlines)" opacity={0.42} />
+        <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} fill="url(#lcdVignette)" />
+        <Rect x={LCD_STAGE.x} y={LCD_STAGE.y} width={LCD_STAGE.w} height={LCD_STAGE.h} rx={LCD_STAGE.r} fill="none" stroke="#ffffff" strokeOpacity="0.08" strokeWidth="2" />
+        <G clipPath="url(#lcdScreenClip)">
+          <Rect x={sheenTravel} y={LCD_STAGE.y} width={sheenWidth} height={LCD_STAGE.h} fill="url(#lcdSheen)" opacity={0.2} transform={`skewX(-18)`} />
+          <G transform={faceStageTransform}>
+            <Rect width={400} height={300} rx={40} fill="#05090a" />
+            <Rect width={400} height={300} rx={40} fill="#ffffff" opacity={screenFlashOpacity} />
+            <Rect width={400} height={300} rx={40} fill="none" stroke="#ffffff" strokeOpacity="0.04" strokeWidth="1.5" />
+            <Rect width={400} height={300} rx={40} fill="url(#rfAmbientGlow)" />
+            <G transform={headTx}>
           {/* Left eye */}
           <G transform={`translate(${A.eyeL.x}, ${A.eyeL.y})`}>
+            <Path d={s.eyeL} fill="#ffffff" opacity={0.08} scale={1.26} />
+            <Path d={s.eyeL} fill="#ffffff" opacity={0.14} scale={1.13} />
             <Path d={s.eyeL} fill="#ffffff" />
           </G>
           {/* Right eye */}
           <G transform={`translate(${A.eyeR.x}, ${A.eyeR.y})`}>
+            <Path d={s.eyeR} fill="#ffffff" opacity={0.08} scale={1.26} />
+            <Path d={s.eyeR} fill="#ffffff" opacity={0.14} scale={1.13} />
             <Path d={s.eyeR} fill="#ffffff" />
           </G>
           {/* Mouth — filled mochi blob */}
           <G transform={`translate(${A.mouth.x}, ${A.mouth.y})`} opacity={0.95}>
+            <Path d={s.mouth} fill="#ffffff" opacity={0.08} scale={1.22} />
+            <Path d={s.mouth} fill="#ffffff" opacity={0.14} scale={1.1} />
             <Path d={s.mouth} fill="#ffffff" />
           </G>
           {/* Blush — below capsule eyes */}
@@ -476,6 +563,8 @@ const FaceOverlay = () => {
               <Circle cx={16} cy={dy3} r={4} fill="#ffffff" opacity={dop3} />
             </G>
           )}
+            </G>
+          </G>
         </G>
       </Svg>
     </View>
@@ -485,12 +574,13 @@ const FaceOverlay = () => {
 const sty = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#060d0f',
+    backgroundColor: 'transparent',
     zIndex: 9999,
     elevation: 9999,
   },
   svg: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
   },
 });
 

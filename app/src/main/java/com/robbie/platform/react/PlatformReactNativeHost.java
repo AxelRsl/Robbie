@@ -19,6 +19,7 @@ import com.robbie.platform.react.modules.TourMediaModule;
 import com.robbie.platform.react.modules.ChargingModule;
 import com.oblador.vectoricons.VectorIconsPackage;
 import com.horcrux.svg.SvgPackage;
+import com.reactnativecommunity.webview.RNCWebViewPackage;
 
 import com.facebook.react.ReactNativeHost;
 import com.facebook.react.ReactPackage;
@@ -63,7 +64,7 @@ public class PlatformReactNativeHost extends ReactNativeHost {
         
         // React Native SVG
         packages.add(new SvgPackage());
-        
+        packages.add(new RNCWebViewPackage());
         
         // Módulos nativos para aplicación retail
         packages.add(new ReactPackage() {

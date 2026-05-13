@@ -21,6 +21,28 @@ allprojects {
         resolutionStrategy.dependencySubstitution {
             substitute module('com.facebook.react:react-native') using module('com.facebook.react:react-android:0.71.8')
         }
+        resolutionStrategy.force 'androidx.webkit:webkit:1.12.1'
+    }
+}
+
+subprojects { subproject ->
+    if (subproject.name == 'react-native-webview') {
+        subproject.afterEvaluate {
+            if (subproject.hasProperty('android')) {
+                subproject.android {
+                    compileOptions {
+                        sourceCompatibility JavaVersion.VERSION_17
+                        targetCompatibility JavaVersion.VERSION_17
+                    }
+                }
+            }
+
+            subproject.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                kotlinOptions {
+                    jvmTarget = '17'
+                }
+            }
+        }
     }
 }
 

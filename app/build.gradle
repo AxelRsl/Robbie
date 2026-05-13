@@ -76,6 +76,7 @@ dependencies {
     implementation 'com.facebook.react:hermes-android:0.71.8'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation project(':react-native-svg')
+    implementation project(':react-native-webview')
 
     // AgentOS SDK v0.4.5 — includes Agent SDK + RobotService automatically
     implementation 'com.orionstar.agent:sdk:0.4.5-SNAPSHOT'
