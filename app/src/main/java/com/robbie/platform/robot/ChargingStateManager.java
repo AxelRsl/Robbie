@@ -26,6 +26,9 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private static final long BATTERY_EVENT_DEBOUNCE_MS = 750L;
     private static final long MALFORMED_PAYLOAD_LOG_DEBOUNCE_MS = 5000L;
     private static final long TRANSITION_LOCK_TIMEOUT_MS = 45000L;
+    private static final int CHARGING_TRUE_CONFIRMATION_EVENTS = 2;
+    private static final int CHARGING_FALSE_CONFIRMATION_EVENTS = 2;
+    private static final long CHARGING_FALSE_GRACE_MS = 3500L;
     private static ChargingStateManager instance;
 
     public static class Snapshot {
@@ -72,6 +75,10 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private long lastBatteryPayloadAtMs = 0L;
     private long lastMalformedPayloadLogAtMs = 0L;
     private String lastBatteryPayload = "";
+    private long lastChargingTrueAtMs = 0L;
+    private long lastChargingFalseAtMs = 0L;
+    private int chargingTrueSignalCount = 0;
+    private int chargingFalseSignalCount = 0;
     private Boolean pendingStartAutoTriggered = null;
     private boolean pendingStopOnReconnect = false;
     private boolean awaitingChargeConfirmation = false;
@@ -177,6 +184,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
         final long operationToken = beginTransitionLock("start");
         pendingStartAutoTriggered = null;
         pendingStopOnReconnect = false;
+        resetChargingSignalTracking();
         autoTriggered = autoTriggeredRequest;
         isNavigatingToCharger = true;
         updateState("navigating_to_charger",
@@ -280,6 +288,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
 
         isCharging = false;
         isNavigatingToCharger = false;
+        resetChargingSignalTracking();
         autoTriggered = false;
         updateState("charge_stopped", "Carga detenida", batteryLevel, false, false, robotApiConnected, false);
 
@@ -455,14 +464,17 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
         try {
             JSONObject json = new JSONObject(data);
             int nextBatteryLevel = parseBatteryLevel(json);
-            boolean nextIsCharging = parseChargingFlag(json);
+            boolean rawIsCharging = parseChargingFlag(json);
+            boolean previouslyCharging = isCharging;
             boolean batteryChanged = nextBatteryLevel != batteryLevel;
-            boolean chargingChanged = nextIsCharging != isCharging;
+            boolean chargingChanged = rawIsCharging != isCharging;
 
             if (!batteryChanged && !chargingChanged && (now - lastBatteryDispatchAtMs) < BATTERY_EVENT_DEBOUNCE_MS) {
                 return;
             }
 
+            updateChargingSignalTracking(rawIsCharging, now);
+            boolean nextIsCharging = resolveChargingState(rawIsCharging, now, previouslyCharging);
             batteryLevel = nextBatteryLevel;
             isCharging = nextIsCharging;
             lastBatteryDispatchAtMs = now;
@@ -515,6 +527,45 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             }
         }
         return false;
+    }
+
+    private synchronized void updateChargingSignalTracking(boolean chargingSignal, long now) {
+        if (chargingSignal) {
+            lastChargingTrueAtMs = now;
+            chargingTrueSignalCount = Math.min(chargingTrueSignalCount + 1, CHARGING_TRUE_CONFIRMATION_EVENTS + 1);
+            chargingFalseSignalCount = 0;
+            return;
+        }
+        lastChargingFalseAtMs = now;
+        chargingFalseSignalCount = Math.min(chargingFalseSignalCount + 1, CHARGING_FALSE_CONFIRMATION_EVENTS + 1);
+        chargingTrueSignalCount = 0;
+    }
+
+    private synchronized boolean resolveChargingState(boolean chargingSignal, long now, boolean previouslyCharging) {
+        if (chargingSignal) {
+            if (previouslyCharging) {
+                return true;
+            }
+            return chargingTrueSignalCount >= CHARGING_TRUE_CONFIRMATION_EVENTS;
+        }
+        if (!previouslyCharging) {
+            return false;
+        }
+        if ("stop".equals(activeOperation) || "charge_stopped".equals(status)) {
+            return false;
+        }
+        boolean withinGraceWindow = lastChargingTrueAtMs > 0L && (now - lastChargingTrueAtMs) < CHARGING_FALSE_GRACE_MS;
+        if (withinGraceWindow) {
+            return true;
+        }
+        return chargingFalseSignalCount < CHARGING_FALSE_CONFIRMATION_EVENTS;
+    }
+
+    private synchronized void resetChargingSignalTracking() {
+        lastChargingTrueAtMs = 0L;
+        lastChargingFalseAtMs = 0L;
+        chargingTrueSignalCount = 0;
+        chargingFalseSignalCount = 0;
     }
 
     private synchronized void updateState(String nextStatus, String nextMessage, int nextBatteryLevel,

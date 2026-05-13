@@ -139,6 +139,24 @@ const buildHtml = (emotion: string) => {
         <circle id="dot-3" cx="216" cy="209" r="4" fill="#ffffff" opacity="0.45" />
       </g>`
     : '';
+  const leftEyeGlow = `
+      <g class="rf-glow rf-eye-glow" transform="translate(145,118)">
+        <path d="${pose.eyeL}" fill="#ffffff" opacity="0.1" transform="scale(1.22 1.15)" />
+        <path d="${pose.eyeL}" fill="#ffffff" opacity="0.058" transform="scale(1.12 1.08)" />
+        <path d="${pose.eyeL}" fill="#ffffff" opacity="0.026" transform="scale(1.05 1.03)" />
+      </g>`;
+  const rightEyeGlow = `
+      <g class="rf-glow rf-eye-glow" transform="translate(255,118)">
+        <path d="${pose.eyeR}" fill="#ffffff" opacity="0.1" transform="scale(1.22 1.15)" />
+        <path d="${pose.eyeR}" fill="#ffffff" opacity="0.058" transform="scale(1.12 1.08)" />
+        <path d="${pose.eyeR}" fill="#ffffff" opacity="0.026" transform="scale(1.05 1.03)" />
+      </g>`;
+  const mouthGlow = `
+      <g class="rf-glow rf-mouth-glow" transform="translate(200,185)">
+        <path d="${pose.mouth}" fill="#ffffff" opacity="0.095" transform="scale(1.2 1.16)" />
+        <path d="${pose.mouth}" fill="#ffffff" opacity="0.056" transform="scale(1.11 1.08)" />
+        <path d="${pose.mouth}" fill="#ffffff" opacity="0.028" transform="scale(1.04 1.03)" />
+      </g>`;
 
   return `<!DOCTYPE html>
 <html>
@@ -161,6 +179,7 @@ const buildHtml = (emotion: string) => {
         inset: 0;
         display: grid;
         place-items: center;
+        contain: layout paint style;
         background:
           radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.045), transparent 34%),
           linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 22%),
@@ -175,26 +194,24 @@ const buildHtml = (emotion: string) => {
         position: absolute;
         inset: 0;
         pointer-events: none;
-        background: repeating-linear-gradient(
-          0deg,
-          rgba(255, 255, 255, 0.025) 0,
-          rgba(255, 255, 255, 0.025) 1px,
-          transparent 1px,
-          transparent 5px
-        );
-        opacity: 0.28;
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'%3E%3Crect width='6' height='1' fill='%23ffffff' fill-opacity='0.045'/%3E%3C/svg%3E") repeat;
+        background-size: 6px 6px;
+        opacity: 0.34;
         z-index: 2;
       }
-      .robot-face-screen::after {
-        content: '';
+      .robot-face-sheen {
         position: absolute;
-        inset: 0;
+        top: -10%;
+        bottom: -10%;
+        left: -34vw;
+        width: 30vw;
         pointer-events: none;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.055), transparent);
-        opacity: 0.18;
-        transform: translateX(-120%);
-        animation: robot-lcd-sheen 6.5s ease-in-out infinite;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.026) 32%, rgba(255, 255, 255, 0.056) 50%, rgba(255, 255, 255, 0.026) 68%, rgba(255, 255, 255, 0));
+        opacity: 0.145;
+        transform: translate3d(0, 0, 0) skewX(-10deg);
+        animation: robot-lcd-sheen 7.8s cubic-bezier(0.35, 0.02, 0.18, 1) infinite;
         z-index: 3;
+        will-change: transform;
       }
       .robot-face-svg {
         width: 100vw;
@@ -203,24 +220,14 @@ const buildHtml = (emotion: string) => {
         position: relative;
         z-index: 1;
       }
-      .robot-face-screen,
-      .robot-face-screen::before,
-      .robot-face-screen::after,
-      .robot-face-svg,
+      .rf-glow path {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
       #head,
+      #mouth-group,
       #sleep-bubble,
-      #sleep-drool,
-      #sleep-z1,
-      #sleep-z2,
-      #sleep-z3,
-      #dot-1,
-      #dot-2,
-      #dot-3,
-      #sparkle-1,
-      #sparkle-2,
-      #sparkle-3,
-      #sparkle-4,
-      #surprised-burst {
+      #sleep-drool {
         will-change: transform, opacity;
       }
       #sleep-z1,
@@ -249,8 +256,8 @@ const buildHtml = (emotion: string) => {
       #sparkle-4 { animation: sparkle-float-4 1.85s ease-in-out infinite; }
       #surprised-burst { animation: burst-pulse 0.42s ease-in-out infinite alternate; }
       @keyframes robot-lcd-sheen {
-        0%, 72% { transform: translateX(-120%); }
-        100% { transform: translateX(120%); }
+        0%, 78% { transform: translate3d(0, 0, 0) skewX(-10deg); }
+        100% { transform: translate3d(154vw, 0, 0) skewX(-10deg); }
       }
       @keyframes sleep-z-float-1 {
         0% { transform: translate(0px, 0px); opacity: 0.8; }
@@ -292,22 +299,9 @@ const buildHtml = (emotion: string) => {
   </head>
   <body data-emotion="${emotion}">
     <div class="robot-face-screen">
+      <div class="robot-face-sheen"></div>
       <svg viewBox="0 0 400 300" class="robot-face-svg" preserveAspectRatio="xMidYMid slice">
         <defs>
-          <filter id="rf-eyeGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter id="rf-mouthGlow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="2.4" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
           <radialGradient id="rf-ambientGlow" cx="50%" cy="45%" r="50%">
             <stop offset="0%" stop-color="#ffffff" stop-opacity="${ambientGlow}" />
             <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
@@ -318,13 +312,16 @@ const buildHtml = (emotion: string) => {
         <rect width="400" height="300" rx="40" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1.5" />
         <ellipse cx="200" cy="145" rx="160" ry="110" fill="url(#rf-ambientGlow)" />
         <g id="head">
-          <g transform="translate(145,118)" filter="url(#rf-eyeGlow)">
+          ${leftEyeGlow}
+          ${rightEyeGlow}
+          ${mouthGlow}
+          <g transform="translate(145,118)">
             <path d="${pose.eyeL}" fill="#ffffff" />
           </g>
-          <g transform="translate(255,118)" filter="url(#rf-eyeGlow)">
+          <g transform="translate(255,118)">
             <path d="${pose.eyeR}" fill="#ffffff" />
           </g>
-          <g id="mouth-group" transform="translate(200,185)" filter="url(#rf-mouthGlow)">
+          <g id="mouth-group" transform="translate(200,185)">
             <path d="${pose.mouth}" fill="#ffffff" opacity="0.95" />
           </g>
           ${showBlush ? `<g opacity="${blushOpacity}"><ellipse cx="141" cy="162" rx="13" ry="7" fill="#ff8ab5" /><ellipse cx="259" cy="162" rx="13" ry="7" fill="#ff8ab5" /></g>` : ''}
@@ -344,11 +341,8 @@ const buildHtml = (emotion: string) => {
       const head = document.getElementById('head');
       const sleepBubble = document.getElementById('sleep-bubble');
       const sleepDrool = document.getElementById('sleep-drool');
-      const z1 = document.getElementById('sleep-z1');
-      const z2 = document.getElementById('sleep-z2');
-      const z3 = document.getElementById('sleep-z3');
       const mouth = document.getElementById('mouth-group');
-      const targetFps = sleeping ? 24 : 30;
+      const targetFps = sleeping ? 36 : 42;
       const frameInterval = 1000 / targetFps;
       let lastFrameTs = 0;
       let rafId = 0;
@@ -379,7 +373,7 @@ const buildHtml = (emotion: string) => {
         const headTilt = baseHeadTilt + floatTilt;
         const headTransform = 'translate(200,' + formatNumber(150 + headY) + ') rotate(' + formatNumber(headTilt) + ') translate(-200,-150)';
         lastHeadTransform = setAttributeIfChanged(head, 'transform', headTransform, lastHeadTransform);
-        if (sleeping && sleepBubble && sleepDrool && z1 && z2 && z3) {
+        if (sleeping && sleepBubble && sleepDrool) {
           const bubbleScale = 0.34 + Math.max(0, Math.sin(t * 0.72)) * 0.18;
           const bubbleX = 217 + Math.sin(t * 0.85) * 1.1;
           const bubbleY = 174 + Math.cos(t * 0.72) * 0.9;
