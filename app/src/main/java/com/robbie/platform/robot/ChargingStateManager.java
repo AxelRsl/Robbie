@@ -26,6 +26,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private static final long BATTERY_EVENT_DEBOUNCE_MS = 750L;
     private static final long MALFORMED_PAYLOAD_LOG_DEBOUNCE_MS = 5000L;
     private static final long TRANSITION_LOCK_TIMEOUT_MS = 45000L;
+    private static final long POST_STOP_CHARGING_SIGNAL_SUPPRESSION_MS = 8000L;
     private static final int CHARGING_TRUE_CONFIRMATION_EVENTS = 2;
     private static final int CHARGING_FALSE_CONFIRMATION_EVENTS = 2;
     private static final long CHARGING_FALSE_GRACE_MS = 3500L;
@@ -82,6 +83,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private Boolean pendingStartAutoTriggered = null;
     private boolean pendingStopOnReconnect = false;
     private boolean awaitingChargeConfirmation = false;
+    private long suppressChargingSignalsUntilMs = 0L;
     private Runnable chargeConfirmationTimeoutRunnable;
 
     private String status = "idle";
@@ -165,6 +167,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     public synchronized void requestStartCharging(boolean autoTriggeredRequest) {
         releaseStaleTransitionLockIfNeeded();
         cancelChargeConfirmationTimeout();
+        suppressChargingSignalsUntilMs = 0L;
         RobotApi api = robotApiService.getRobotApi();
         if (!robotApiService.isConnected() || api == null) {
             pendingStartAutoTriggered = autoTriggeredRequest;
@@ -264,6 +267,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     public synchronized void requestStopCharging() {
         releaseStaleTransitionLockIfNeeded();
         cancelChargeConfirmationTimeout();
+        suppressChargingSignalsUntilMs = SystemClock.elapsedRealtime() + POST_STOP_CHARGING_SIGNAL_SUPPRESSION_MS;
         RobotApi api = robotApiService.getRobotApi();
         boolean wasCharging = isCharging || "charging".equals(status);
         boolean wasNavigating = isNavigatingToCharger || "navigating_to_charger".equals(status) || "charge_obstacle".equals(status);
@@ -313,10 +317,6 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                         Log.w(TAG, "Ignoring stale stop charging result callback");
                         return;
                     }
-                    try {
-                        api.enableBattery();
-                    } catch (Exception ignored) {
-                    }
                     finishTransitionLock(operationToken, "stop");
                     if (result == Definition.RESULT_OK) {
                         updateState("idle", "", batteryLevel, false, false, robotApiConnected, false);
@@ -328,16 +328,15 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
         } catch (Exception e) {
             finishTransitionLock(operationToken, "stop");
             Log.w(TAG, "Error leaving charging pile", e);
-            try {
-                api.enableBattery();
-            } catch (Exception ignored) {
-            }
             updateState("idle", "", batteryLevel, false, false, robotApiConnected, false);
         }
     }
 
     public synchronized void disableBatteryUi() {
-        RobotApi api = robotApiService.getRobotApi();
+        disableBatteryUi(robotApiService.getRobotApi());
+    }
+
+    private synchronized void disableBatteryUi(RobotApi api) {
         if (!robotApiService.isConnected() || api == null) {
             return;
         }
@@ -351,6 +350,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     @Override
     public synchronized void onRobotApiConnected(RobotApi robotApi) {
         robotApiConnected = true;
+        disableBatteryUi(robotApi);
         registerBatteryListener(robotApi);
         safeRefreshBatteryLevel(robotApi);
         updateState(status, message, batteryLevel, isCharging, isNavigatingToCharger, true, autoTriggered);
@@ -465,6 +465,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             JSONObject json = new JSONObject(data);
             int nextBatteryLevel = parseBatteryLevel(json);
             boolean rawIsCharging = parseChargingFlag(json);
+            boolean effectiveIsCharging = shouldAcceptChargingSignal(rawIsCharging, now);
             boolean previouslyCharging = isCharging;
             boolean batteryChanged = nextBatteryLevel != batteryLevel;
             boolean chargingChanged = rawIsCharging != isCharging;
@@ -473,8 +474,8 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                 return;
             }
 
-            updateChargingSignalTracking(rawIsCharging, now);
-            boolean nextIsCharging = resolveChargingState(rawIsCharging, now, previouslyCharging);
+            updateChargingSignalTracking(effectiveIsCharging, now);
+            boolean nextIsCharging = resolveChargingState(effectiveIsCharging, now, previouslyCharging);
             batteryLevel = nextBatteryLevel;
             isCharging = nextIsCharging;
             lastBatteryDispatchAtMs = now;
@@ -559,6 +560,20 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             return true;
         }
         return chargingFalseSignalCount < CHARGING_FALSE_CONFIRMATION_EVENTS;
+    }
+
+    private synchronized boolean shouldAcceptChargingSignal(boolean rawChargingSignal, long now) {
+        if (!rawChargingSignal) {
+            return false;
+        }
+        if (now >= suppressChargingSignalsUntilMs) {
+            return true;
+        }
+        return isNavigatingToCharger
+            || awaitingChargeConfirmation
+            || "start".equals(activeOperation)
+            || "navigating_to_charger".equals(status)
+            || "charging_connecting".equals(status);
     }
 
     private synchronized void resetChargingSignalTracking() {
