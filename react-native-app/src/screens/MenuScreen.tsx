@@ -6,6 +6,7 @@ import {
   ImageBackground,
   TouchableOpacity,
   StyleSheet,
+  NativeModules,
 } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { CloudApi } from '@/services/CloudApi';
@@ -21,6 +22,8 @@ import {
   FunctionalGridTemplate,
 } from '@/components/templates';
 import type { SceneFunction, SceneProject, TemplateType } from '@/types';
+
+const { RobotSkillModule } = NativeModules;
 
 // Funciones por defecto cuando no hay proyecto de escena configurado
 const DEFAULT_FUNCTIONS: SceneFunction[] = [
@@ -89,13 +92,79 @@ export const MenuScreen: React.FC = () => {
     loadSceneProject();
   }, []);
 
+  const mapTextCommandToAction = (text: string): string | null => {
+    const normalized = text.trim().toLowerCase();
+
+    if (
+      normalized === 've a cargar'
+      || normalized === 'ir a cargar'
+      || normalized === 'vete a cargar'
+      || normalized === 'carga tu bateria'
+      || normalized === 'carga tu batería'
+      || normalized === 'recarga'
+      || normalized === 've al cargador'
+    ) {
+      return 'com.robbie.action.GO_CHARGE';
+    }
+
+    if (
+      normalized === 'deja de cargar'
+      || normalized === 'detener carga'
+      || normalized === 'deten la carga'
+      || normalized === 'detén la carga'
+      || normalized === 'sal del cargador'
+      || normalized === 'ya no cargues'
+    ) {
+      return 'com.robbie.action.STOP_CHARGE';
+    }
+
+    return null;
+  };
+
   const handleFunctionPress = async (fn: SceneFunction) => {
     const command = fn.activationCommand;
     console.log('[MenuScreen] Funcion presionada:', fn.name, '- comando:', command);
 
+    if (command.startsWith('action:')) {
+      const actionName = command.substring(7).trim();
+      if (!actionName || !RobotSkillModule) {
+        return;
+      }
+      try {
+        await RobotSkillModule.executeAction(actionName, '{}');
+      } catch (error) {
+        console.error('[MenuScreen] Error ejecutando action nativa:', error);
+      }
+      return;
+    }
+
+    if (command.startsWith('com.robbie.action.')) {
+      if (!RobotSkillModule) {
+        return;
+      }
+      try {
+        await RobotSkillModule.executeAction(command, '{}');
+      } catch (error) {
+        console.error('[MenuScreen] Error ejecutando action directa:', error);
+      }
+      return;
+    }
+
     // TTS commands: send text to AgentOS and stay on menu
     if (command.startsWith('tts:')) {
       const text = command.substring(4).trim();
+      const mappedAction = mapTextCommandToAction(text);
+      if (mappedAction) {
+        if (!RobotSkillModule) {
+          return;
+        }
+        try {
+          await RobotSkillModule.executeAction(mappedAction, '{}');
+        } catch (error) {
+          console.error('[MenuScreen] Error convirtiendo comando TTS a action:', error);
+        }
+        return;
+      }
       console.log('[MenuScreen] Enviando comando TTS al agente:', text);
       try {
         await fetch('http://127.0.0.1:8080/api/scene-projects/agent-query', {

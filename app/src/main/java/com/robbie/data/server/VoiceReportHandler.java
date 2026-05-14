@@ -11,11 +11,15 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TimeZone;
 
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Method;
@@ -45,15 +49,9 @@ public class VoiceReportHandler extends BaseHandler {
         if (!file.exists()) {
             return jsonResponse(Response.Status.OK, new ArrayList<>());
         }
-        try (FileInputStream fis = new FileInputStream(file);
-             InputStreamReader isr = new InputStreamReader(fis, "UTF-8");
-             BufferedReader reader = new BufferedReader(isr)) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) sb.append(line);
-            
-            List<Object> result = gson.fromJson(sb.toString(), new TypeToken<List<Object>>(){}.getType());
-            return jsonResponse(Response.Status.OK, result != null ? result : new ArrayList<>());
+        try {
+            List<Map<String, Object>> result = normalizeLogs(readLogs(file, gson));
+            return jsonResponse(Response.Status.OK, result);
         } catch (Exception e) {
             Log.e(TAG, "Error reading voice reports JSON", e);
             return jsonResponse(Response.Status.INTERNAL_ERROR, mapOf("error", e.getMessage()));
@@ -61,41 +59,34 @@ public class VoiceReportHandler extends BaseHandler {
     }
 
     // Método estático para registrar interacciones desde el Bridge
-    public static synchronized void logInteraction(String robotName, String question, String answer, long durationSecs, boolean resolved, String userId) {
+    public static synchronized void logInteraction(String robotName, String question, String answer, long durationSecs, boolean resolved, String userId, long startedAtMs, long endedAtMs) {
         File dir = new File(DIR);
         if (!dir.exists()) dir.mkdirs();
 
         File file = new File(FILE);
-        List<Object> logs = new ArrayList<>();
+        List<Map<String, Object>> logs = new ArrayList<>();
         Gson gson = new Gson();
 
-        if (file.exists()) {
-            try (FileInputStream fis = new FileInputStream(file);
-                 InputStreamReader isr = new InputStreamReader(fis, "UTF-8");
-                 BufferedReader reader = new BufferedReader(isr)) {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) sb.append(line);
-                List<Object> existing = gson.fromJson(sb.toString(), new TypeToken<List<Object>>(){}.getType());
-                if (existing != null) logs.addAll(existing);
-            } catch (Exception e) {
-                Log.e(TAG, "Error reading previous logs", e);
-            }
+        try {
+            logs.addAll(normalizeLogs(readLogs(file, gson)));
+        } catch (Exception e) {
+            Log.e(TAG, "Error reading previous logs", e);
         }
 
         // Crear nueva entrada
-        java.util.Map<String, Object> newLog = new java.util.HashMap<>();
-        newLog.put("id", "log_" + System.currentTimeMillis());
+        Map<String, Object> newLog = new HashMap<>();
+        long safeEndedAtMs = endedAtMs > 0 ? endedAtMs : System.currentTimeMillis();
+        long safeStartedAtMs = startedAtMs > 0 ? startedAtMs : Math.max(0L, safeEndedAtMs - (Math.max(durationSecs, 1L) * 1000L));
+        newLog.put("id", "log_" + safeEndedAtMs);
         newLog.put("robot", robotName);
         newLog.put("user", userId);
         newLog.put("question", question);
         newLog.put("answer", answer);
         newLog.put("resolved", resolved);
-        
-        // Formato ISO 8601 completo
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault());
-        sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-        newLog.put("timestamp", sdf.format(new Date()));
+        newLog.put("timestamp", formatIsoTimestamp(safeEndedAtMs));
+        newLog.put("timestampMs", safeEndedAtMs);
+        newLog.put("startedAtMs", safeStartedAtMs);
+        newLog.put("endedAtMs", safeEndedAtMs);
         
         // Duración real en segundos
         newLog.put("duration", durationSecs); 
@@ -115,5 +106,126 @@ public class VoiceReportHandler extends BaseHandler {
         } catch (Exception e) {
             Log.e(TAG, "Error saving voice reports JSON", e);
         }
+    }
+
+    private static List<Map<String, Object>> readLogs(File file, Gson gson) throws Exception {
+        if (!file.exists()) {
+            return new ArrayList<>();
+        }
+        try (FileInputStream fis = new FileInputStream(file);
+             InputStreamReader isr = new InputStreamReader(fis, "UTF-8");
+             BufferedReader reader = new BufferedReader(isr)) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) sb.append(line);
+            List<Map<String, Object>> result = gson.fromJson(sb.toString(), new TypeToken<List<Map<String, Object>>>(){}.getType());
+            return result != null ? result : new ArrayList<>();
+        }
+    }
+
+    private static List<Map<String, Object>> normalizeLogs(List<Map<String, Object>> rawLogs) {
+        List<Map<String, Object>> normalized = new ArrayList<>();
+        for (Map<String, Object> log : rawLogs) {
+            if (log != null) {
+                normalized.add(normalizeLog(log));
+            }
+        }
+        return normalized;
+    }
+
+    private static Map<String, Object> normalizeLog(Map<String, Object> log) {
+        Map<String, Object> normalized = new HashMap<>(log);
+
+        long timestampMs = asLong(normalized.get("timestampMs"));
+        long endedAtMs = asLong(normalized.get("endedAtMs"));
+        long startedAtMs = asLong(normalized.get("startedAtMs"));
+        long durationSecs = asLong(normalized.get("duration"));
+        String timestamp = asString(normalized.get("timestamp"));
+        String id = asString(normalized.get("id"));
+
+        if (timestampMs <= 0) {
+            if (endedAtMs > 0) {
+                timestampMs = endedAtMs;
+            } else {
+                timestampMs = parseTimestampMillis(timestamp);
+            }
+        }
+
+        if (timestampMs <= 0 && id.startsWith("log_")) {
+            try {
+                timestampMs = Long.parseLong(id.substring(4));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        if (endedAtMs <= 0) {
+            endedAtMs = timestampMs;
+        }
+
+        if (startedAtMs <= 0) {
+            if (endedAtMs > 0 && durationSecs > 0) {
+                startedAtMs = Math.max(0L, endedAtMs - (durationSecs * 1000L));
+            } else {
+                startedAtMs = endedAtMs;
+            }
+        }
+
+        if ((timestamp == null || timestamp.isEmpty()) && timestampMs > 0) {
+            timestamp = formatIsoTimestamp(timestampMs);
+        }
+
+        if ((id == null || id.isEmpty()) && timestampMs > 0) {
+            id = "log_" + timestampMs;
+        }
+
+        normalized.put("id", id);
+        normalized.put("timestamp", timestamp);
+        normalized.put("timestampMs", timestampMs);
+        normalized.put("startedAtMs", startedAtMs);
+        normalized.put("endedAtMs", endedAtMs);
+
+        return normalized;
+    }
+
+    private static long parseTimestampMillis(String timestamp) {
+        if (timestamp == null || timestamp.trim().isEmpty()) {
+            return 0L;
+        }
+        try {
+            SimpleDateFormat isoUtc = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+            isoUtc.setTimeZone(TimeZone.getTimeZone("UTC"));
+            Date parsed = isoUtc.parse(timestamp);
+            return parsed != null ? parsed.getTime() : 0L;
+        } catch (ParseException ignored) {
+        }
+        try {
+            return Long.parseLong(timestamp);
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
+    }
+
+    private static String formatIsoTimestamp(long millis) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return sdf.format(new Date(millis));
+    }
+
+    private static long asLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
+    }
+
+    private static String asString(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 }

@@ -52,7 +52,9 @@ public class VoiceInteractionTracker {
         }
 
         try {
-            long durationSecs = (System.currentTimeMillis() - lastUserQuestionTime) / 1000;
+            long endedAtMs = System.currentTimeMillis();
+            long startedAtMs = lastUserQuestionTime > 0 ? lastUserQuestionTime : endedAtMs;
+            long durationSecs = (endedAtMs - startedAtMs) / 1000;
             if (durationSecs < 1) durationSecs = 1;
 
             boolean resolved = true;
@@ -91,7 +93,7 @@ public class VoiceInteractionTracker {
             
             VoiceReportHandler.logInteraction(
                 contextName, lastUserQuestion, answer != null ? answer : "", 
-                durationSecs, resolved, userId
+                durationSecs, resolved, userId, startedAtMs, endedAtMs
             );
 
         } finally {
