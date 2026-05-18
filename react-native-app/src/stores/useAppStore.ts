@@ -17,6 +17,13 @@ export interface ChargingUiState {
   autoTriggered: boolean;
 }
 
+export interface AgentUiState {
+  status: string;
+  message: string;
+  gateOpen: boolean;
+  personVisible: boolean;
+}
+
 const DEFAULT_CHARGING_STATE: ChargingUiState = {
   status: '',
   message: '',
@@ -25,6 +32,13 @@ const DEFAULT_CHARGING_STATE: ChargingUiState = {
   isNavigatingToCharger: false,
   robotApiConnected: false,
   autoTriggered: false,
+};
+
+const DEFAULT_AGENT_STATE: AgentUiState = {
+  status: 'reset_status',
+  message: '',
+  gateOpen: false,
+  personVisible: false,
 };
 
 function isSameChargingState(a: ChargingUiState, b: ChargingUiState) {
@@ -53,6 +67,7 @@ interface AppState {
   sceneProject: SceneProject | null;
   sceneProjectLoaded: boolean;
   charging: ChargingUiState;
+  agent: AgentUiState;
   chargingStatus: string;
   chargingMessage: string;
 
@@ -73,6 +88,8 @@ interface AppState {
   setChargingState: (state: Partial<ChargingUiState>) => void;
   resetChargingState: (force?: boolean) => void;
   setChargingStatus: (status: string, message: string) => void;
+  setAgentStatus: (status: string, message: string) => void;
+  setListeningGate: (gateOpen: boolean, personVisible: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -91,6 +108,7 @@ export const useAppStore = create<AppState>((set) => ({
   sceneProject: null,
   sceneProjectLoaded: false,
   charging: DEFAULT_CHARGING_STATE,
+  agent: DEFAULT_AGENT_STATE,
   chargingStatus: '',
   chargingMessage: '',
 
@@ -150,5 +168,19 @@ export const useAppStore = create<AppState>((set) => ({
     },
     chargingStatus: status,
     chargingMessage: message,
+  })),
+  setAgentStatus: (status, message) => set((state) => ({
+    agent: {
+      ...state.agent,
+      status,
+      message,
+    },
+  })),
+  setListeningGate: (gateOpen, personVisible) => set((state) => ({
+    agent: {
+      ...state.agent,
+      gateOpen,
+      personVisible,
+    },
   })),
 }));

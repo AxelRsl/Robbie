@@ -60,10 +60,43 @@ function ChargingStopButton() {
   );
 }
 
+function AgentStatusOverlay() {
+  const agent = useAppStore((s) => s.agent);
+  const currentMode = useAppStore((s) => s.currentMode);
+  const selectedProduct = useAppStore((s) => s.selectedProduct);
+  const charging = useAppStore((s) => s.charging);
+
+  const visible = currentMode === 'home'
+    && !selectedProduct
+    && !charging.isCharging
+    && !charging.isNavigatingToCharger
+    && agent.status === 'listening'
+    && agent.gateOpen;
+  if (!visible) {
+    return null;
+  }
+
+  const statusLabel = 'Escuchando';
+
+  return (
+    <View style={styles.agentOverlay}>
+      <Text style={styles.agentOverlayTitle}>{statusLabel}</Text>
+      {!!agent.message && <Text style={styles.agentOverlayBody}>{agent.message}</Text>}
+    </View>
+  );
+}
+
 function AppContent() {
-  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, charging } = useAppStore();
+  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, charging, agent, setAgentStatus, setListeningGate } = useAppStore();
   const lastChargingUiModeRef = useRef(false);
   const shouldShowChargingUi = charging.isCharging || charging.isNavigatingToCharger || charging.status === 'charge_obstacle';
+  const isIdleAgentState = !agent.status || agent.status === 'reset_status';
+  const shouldShowIdleFace = currentMode === 'home'
+    && !selectedProduct
+    && !agent.personVisible
+    && !agent.gateOpen
+    && isIdleAgentState;
+  const shouldRenderFaceOverlay = shouldShowChargingUi || currentMode === 'charging' || shouldShowIdleFace;
 
   useEffect(() => {
     // Cargar productos al inicio de la app
@@ -108,11 +141,21 @@ function AppContent() {
       setCurrentMode(targetMode);
     });
 
+    const agentStatusListener = eventEmitter.addListener('onAgentStatus', (event) => {
+      setAgentStatus(event?.status || 'reset_status', event?.message || '');
+    });
+
+    const listeningGateListener = eventEmitter.addListener('onListeningGate', (event) => {
+      setListeningGate(!!event?.gateOpen, !!event?.personVisible);
+    });
+
     return () => {
       navigationListener.remove();
       modeSwitchListener.remove();
+      agentStatusListener.remove();
+      listeningGateListener.remove();
     };
-  }, [setNavigation, setCurrentMode]);
+  }, [setNavigation, setCurrentMode, setAgentStatus, setListeningGate]);
 
   // Refrescar productos cada vez que se entra a retail (por si el panel los actualizó)
   useEffect(() => {
@@ -174,7 +217,8 @@ function AppContent() {
           onClose={() => setSelectedProduct(null)}
         />
       )}
-      <FaceOverlayWebView />
+      <AgentStatusOverlay />
+      {shouldRenderFaceOverlay && <FaceOverlayWebView />}
       {(shouldShowChargingUi || currentMode === 'charging') && <ChargingStopButton />}
     </View>
   );
@@ -193,5 +237,27 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  agentOverlay: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    right: 14,
+    zIndex: 99998,
+    elevation: 99998,
+    backgroundColor: 'rgba(17, 24, 39, 0.82)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  agentOverlayTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  agentOverlayBody: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 12,
+    marginTop: 2,
   },
 });

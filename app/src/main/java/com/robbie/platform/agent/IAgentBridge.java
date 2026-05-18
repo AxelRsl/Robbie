@@ -23,6 +23,8 @@ public interface IAgentBridge {
         void onASRPartial(String text);
         void onASRFinal(String text);
         void onTTSUpdate(String text, boolean isFinal);
+        void onAgentStatusChanged(String status, String message);
+        void onListeningGateChanged(boolean gateOpen, boolean personVisible);
     }
 
     /**
@@ -61,6 +63,8 @@ public interface IAgentBridge {
      * Controla estado del microfono.
      */
     void setMicrophoneMuted(boolean muted);
+
+    void setVisionListeningState(boolean gateOpen, boolean personVisible);
 
     /**
      * Sube informacion de contexto/interfaz al LLM.

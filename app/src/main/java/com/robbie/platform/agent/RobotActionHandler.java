@@ -3,6 +3,7 @@ package com.robbie.platform.agent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 
 import com.robbie.core.animation.ProceduralAnimationManager;
@@ -47,6 +48,13 @@ public class RobotActionHandler {
     private static final String SERVICE_OWNER = "RobotActionHandler";
     private static RobotActionHandler instance;
     private static final int CHARGE_TIMEOUT = 120000;
+    private static final int FACE_DETECTION_RANGE_METERS = 3;
+    private static final long FACE_TRACK_WATCHDOG_INTERVAL_MS = 1200L;
+    private static final long FACE_VISIBILITY_GRACE_MS = 1500L;
+    private static final long FACE_REACQUIRE_DELAY_MS = 300L;
+    private static final long FACE_RETRY_DELAY_MS = 500L;
+    private static final long FACE_TRACK_LOST_TIMEOUT_MS = 8000L;
+    private static final float FACE_TRACK_MAX_DISTANCE_METERS = 5.0f;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final RobbieRecommendationEngine robbieRecommendationEngine;
@@ -63,7 +71,12 @@ public class RobotActionHandler {
     private boolean faceTrackActive = false;
     private boolean isFollowing = false;
     private int currentFollowId = -1;
+    private int currentFollowReqId = -1;
     private PersonListener personListener;
+    private Runnable faceTrackingWatchdogRunnable;
+    private long lastVisiblePersonAtMs = 0L;
+    private boolean microphoneOpenForVisiblePerson = false;
+    private boolean lastReportedVisiblePerson = false;
     private boolean isNavigating = false;
     private boolean isChargingMode = false;
     private boolean isNavigatingToCharger = false;
@@ -128,6 +141,9 @@ public class RobotActionHandler {
         public void onRobotApiDisconnected() {
             robotApiConnected = false;
             isFollowing = false;
+            currentFollowId = -1;
+            currentFollowReqId = -1;
+            applyVoiceListeningState(false);
             Log.w(TAG, "RobotApi disconnected");
         }
 
@@ -135,6 +151,9 @@ public class RobotActionHandler {
         public void onRobotApiDisabled() {
             robotApiConnected = false;
             isFollowing = false;
+            currentFollowId = -1;
+            currentFollowReqId = -1;
+            applyVoiceListeningState(false);
             Log.w(TAG, "RobotApi disabled");
         }
     };
@@ -182,6 +201,11 @@ public class RobotActionHandler {
             } else if ("charge_failed".equals(snapshot.status)) {
                 if (agentBridge != null) {
                     agentBridge.tts(snapshot.message == null || snapshot.message.isEmpty() ? "No pude llegar al cargador." : snapshot.message, 8000);
+                }
+                mainHandler.postDelayed(() -> startFaceTracking(), 2000);
+            } else if ("charge_completed".equals(snapshot.status)) {
+                if (agentBridge != null) {
+                    agentBridge.tts("Ya termine de cargar. Voy a salir del dock y quedo listo para ayudarte.", 10000);
                 }
                 mainHandler.postDelayed(() -> startFaceTracking(), 2000);
             } else if ("charge_stopped".equals(snapshot.status)) {
@@ -873,9 +897,12 @@ public class RobotActionHandler {
     public void startFaceTracking() {
         ensureRobotServicesStarted();
         faceTrackActive = true;
+        lastVisiblePersonAtMs = 0L;
+        applyVoiceListeningState(false);
+        scheduleFaceTrackingWatchdog();
         if (robotApiConnected) {
             registerPersonDetection();
-            tryFollowVisiblePerson();
+            pollFaceTrackingState();
         }
     }
 
@@ -887,8 +914,8 @@ public class RobotActionHandler {
             @Override
             public void personChanged() {
                 super.personChanged();
-                if (faceTrackActive && !isFollowing) {
-                    tryFollowVisiblePerson();
+                if (faceTrackActive) {
+                    pollFaceTrackingState();
                 }
             }
         };
@@ -899,19 +926,8 @@ public class RobotActionHandler {
     private void tryFollowVisiblePerson() {
         if (!robotApiConnected || robotApi == null || !faceTrackActive || isFollowing) return;
         try {
-            // Try complete face list first (best quality), then all faces within 3m
-            List<Person> faces = PersonApi.getInstance().getCompleteFaceList();
-            if (faces == null || faces.isEmpty()) {
-                faces = PersonApi.getInstance().getAllFaceList(3);
-            }
-            if (faces != null && !faces.isEmpty()) {
-                // Pick the closest person for more natural tracking
-                Person best = faces.get(0);
-                for (Person p : faces) {
-                    if (p.getDistance() > 0 && p.getDistance() < best.getDistance()) {
-                        best = p;
-                    }
-                }
+            Person best = findBestVisiblePerson(getVisibleFaces());
+            if (best != null) {
                 int personId = best.getId();
                 if (personId >= 0) {
                     Log.d(TAG, "Person found (id=" + personId + ", dist=" + best.getDistance() + "m), starting focus follow");
@@ -925,91 +941,249 @@ public class RobotActionHandler {
 
     private void doStartFocusFollow(int personId) {
         if (!robotApiConnected || robotApi == null || isFollowing) return;
+        final int requestId = faceTrackReqId++;
         isFollowing = true;
         currentFollowId = personId;
+        currentFollowReqId = requestId;
         try {
             int result = robotApi.startFocusFollow(
-                faceTrackReqId, personId, 8000L, 5.0f, true,
+                requestId, personId, FACE_TRACK_LOST_TIMEOUT_MS, FACE_TRACK_MAX_DISTANCE_METERS, true,
                 new ActionListener() {
                     @Override
-                    public void onResult(int reqId, String result) {
+                    public void onResult(int status, String result) {
                         Log.d(TAG, "FocusFollow ended: " + result);
-                        isFollowing = false;
-                        currentFollowId = -1;
+                        if (currentFollowReqId != requestId) {
+                            return;
+                        }
+                        clearCurrentFollowState();
                         if (faceTrackActive) {
-                            mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 500);
+                            mainHandler.postDelayed(() -> pollFaceTrackingState(), FACE_RETRY_DELAY_MS);
                         }
                     }
 
                     @Override
-                    public void onError(int reqId, String error) {
+                    public void onError(int errorCode, String error) {
                         Log.w(TAG, "FocusFollow error: " + error);
-                        isFollowing = false;
-                        currentFollowId = -1;
-                        // Retry finding a new person after error
+                        if (currentFollowReqId != requestId) {
+                            return;
+                        }
+                        if (errorCode == Definition.ACTION_RESPONSE_ALREADY_RUN) {
+                            isFollowing = true;
+                            currentFollowId = personId;
+                            currentFollowReqId = requestId;
+                            return;
+                        }
+                        clearCurrentFollowState();
                         if (faceTrackActive) {
-                            mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 500);
+                            mainHandler.postDelayed(() -> pollFaceTrackingState(), FACE_RETRY_DELAY_MS);
                         }
                     }
 
                     @Override
-                    public void onStatusUpdate(int reqId, String status) {
+                    public void onStatusUpdate(int statusCode, String status) {
                         Log.d(TAG, "FocusFollow status: " + status);
+                        if (currentFollowReqId != requestId) {
+                            return;
+                        }
+                        if (statusCode == Definition.STATUS_TRACK_TARGET_SUCCEED || statusCode == Definition.STATUS_GUEST_APPEAR) {
+                            applyVoiceListeningState(true);
+                            return;
+                        }
+                        if (statusCode == Definition.STATUS_GUEST_LOST || statusCode == Definition.STATUS_GUEST_FARAWAY) {
+                            handleFocusFollowLost(requestId);
+                            return;
+                        }
                         try {
                             org.json.JSONObject json = new org.json.JSONObject(status);
                             String statusStr = json.optString("status", "");
                             if ("guest_lost".equalsIgnoreCase(statusStr)
                                 || String.valueOf(Definition.STATUS_GUEST_LOST).equals(statusStr)) {
-                                Log.i(TAG, "FocusFollow: target lost, stopping and retrying");
-                                isFollowing = false;
-                                currentFollowId = -1;
-                                try { robotApi.stopFocusFollow(faceTrackReqId); } catch (Exception ignored) {}
-                                if (faceTrackActive) {
-                                    mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 300);
-                                }
+                                handleFocusFollowLost(requestId);
                             }
                         } catch (Exception e) {
-                            // Status might be plain text, check for known lost patterns
                             if (status != null && (status.contains("lost") || status.contains("LOST"))) {
-                                Log.i(TAG, "FocusFollow: target lost (text), stopping and retrying");
-                                isFollowing = false;
-                                currentFollowId = -1;
-                                try { robotApi.stopFocusFollow(faceTrackReqId); } catch (Exception ignored) {}
-                                if (faceTrackActive) {
-                                    mainHandler.postDelayed(() -> tryFollowVisiblePerson(), 300);
-                                }
+                                handleFocusFollowLost(requestId);
                             }
                         }
                     }
                 });
             Log.d(TAG, "startFocusFollow(id=" + personId + ") result=" + result);
             if (result != 0) {
-                isFollowing = false;
-                currentFollowId = -1;
+                clearCurrentFollowState();
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not start focus follow", e);
-            isFollowing = false;
-            currentFollowId = -1;
+            clearCurrentFollowState();
         }
     }
 
     public void stopFaceTracking() {
         faceTrackActive = false;
-        isFollowing = false;
-        currentFollowId = -1;
+        cancelFaceTrackingWatchdog();
+        int activeFollowReqId = currentFollowReqId;
+        lastVisiblePersonAtMs = 0L;
+        clearCurrentFollowState();
+        applyVoiceListeningState(false);
         try {
             if (personListener != null) {
                 PersonApi.getInstance().unregisterPersonListener(personListener);
                 personListener = null;
             }
             if (robotApi != null && robotApiConnected) {
-                robotApi.stopFocusFollow(faceTrackReqId);
+                int stopReqId = activeFollowReqId >= 0 ? activeFollowReqId : faceTrackReqId++;
+                robotApi.stopFocusFollow(stopReqId);
                 Log.d(TAG, "Focus follow stopped");
             }
         } catch (Exception e) {
             Log.w(TAG, "Could not stop face tracking", e);
         }
+    }
+
+    private void pollFaceTrackingState() {
+        if (!faceTrackActive) {
+            applyVoiceListeningState(false);
+            return;
+        }
+        List<Person> faces = getVisibleFaces();
+        Person best = findBestVisiblePerson(faces);
+        applyVoiceListeningState(best != null);
+        if (best == null) {
+            if (isFollowing && !hasRecentVisiblePerson()) {
+                stopCurrentFocusFollow();
+            }
+            return;
+        }
+        if (isFollowing && currentFollowId >= 0 && !containsPersonId(faces, currentFollowId)) {
+            stopCurrentFocusFollow();
+            mainHandler.postDelayed(this::tryFollowVisiblePerson, FACE_REACQUIRE_DELAY_MS);
+            return;
+        }
+        if (!isFollowing) {
+            doStartFocusFollow(best.getId());
+        }
+    }
+
+    private void scheduleFaceTrackingWatchdog() {
+        cancelFaceTrackingWatchdog();
+        if (faceTrackingWatchdogRunnable == null) {
+            faceTrackingWatchdogRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    if (!faceTrackActive) {
+                        return;
+                    }
+                    pollFaceTrackingState();
+                    mainHandler.postDelayed(this, FACE_TRACK_WATCHDOG_INTERVAL_MS);
+                }
+            };
+        }
+        mainHandler.postDelayed(faceTrackingWatchdogRunnable, FACE_TRACK_WATCHDOG_INTERVAL_MS);
+    }
+
+    private void cancelFaceTrackingWatchdog() {
+        if (faceTrackingWatchdogRunnable != null) {
+            mainHandler.removeCallbacks(faceTrackingWatchdogRunnable);
+        }
+    }
+
+    private List<Person> getVisibleFaces() {
+        try {
+            List<Person> faces = PersonApi.getInstance().getCompleteFaceList();
+            if (faces == null || faces.isEmpty()) {
+                faces = PersonApi.getInstance().getAllFaceList(FACE_DETECTION_RANGE_METERS);
+            }
+            return faces != null ? faces : new ArrayList<>();
+        } catch (Exception e) {
+            Log.w(TAG, "getVisibleFaces error", e);
+            return new ArrayList<>();
+        }
+    }
+
+    private Person findBestVisiblePerson(List<Person> faces) {
+        if (faces == null || faces.isEmpty()) {
+            return null;
+        }
+        Person best = null;
+        for (Person person : faces) {
+            if (person == null || person.getId() < 0) {
+                continue;
+            }
+            if (best == null) {
+                best = person;
+                continue;
+            }
+            double bestDistance = best.getDistance();
+            double candidateDistance = person.getDistance();
+            boolean candidateValid = candidateDistance > 0;
+            boolean bestValid = bestDistance > 0;
+            if (candidateValid && (!bestValid || candidateDistance < bestDistance)) {
+                best = person;
+            }
+        }
+        return best;
+    }
+
+    private boolean containsPersonId(List<Person> faces, int personId) {
+        if (faces == null || personId < 0) {
+            return false;
+        }
+        for (Person face : faces) {
+            if (face != null && face.getId() == personId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void handleFocusFollowLost(int requestId) {
+        if (currentFollowReqId != requestId) {
+            return;
+        }
+        Log.i(TAG, "FocusFollow: target lost, stopping and retrying");
+        stopCurrentFocusFollow();
+        if (faceTrackActive) {
+            mainHandler.postDelayed(this::pollFaceTrackingState, FACE_REACQUIRE_DELAY_MS);
+        }
+    }
+
+    private void stopCurrentFocusFollow() {
+        int stopReqId = currentFollowReqId;
+        clearCurrentFollowState();
+        if (!robotApiConnected || robotApi == null || stopReqId < 0) {
+            return;
+        }
+        try {
+            robotApi.stopFocusFollow(stopReqId);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not stop current focus follow", e);
+        }
+    }
+
+    private void clearCurrentFollowState() {
+        isFollowing = false;
+        currentFollowId = -1;
+        currentFollowReqId = -1;
+    }
+
+    private boolean hasRecentVisiblePerson() {
+        return lastVisiblePersonAtMs > 0L && (SystemClock.elapsedRealtime() - lastVisiblePersonAtMs) <= FACE_VISIBILITY_GRACE_MS;
+    }
+
+    private void applyVoiceListeningState(boolean seesPersonNow) {
+        long now = SystemClock.elapsedRealtime();
+        if (seesPersonNow) {
+            lastVisiblePersonAtMs = now;
+        }
+        boolean shouldListen = faceTrackActive && robotApiConnected && (seesPersonNow || hasRecentVisiblePerson());
+        if (microphoneOpenForVisiblePerson == shouldListen && lastReportedVisiblePerson == seesPersonNow) {
+            return;
+        }
+        microphoneOpenForVisiblePerson = shouldListen;
+        lastReportedVisiblePerson = seesPersonNow;
+        if (agentBridge != null) {
+            agentBridge.setVisionListeningState(shouldListen, seesPersonNow);
+        }
+        Log.d(TAG, "Voice gate updated. shouldListen=" + shouldListen);
     }
 
     // ==================== Context Upload ====================

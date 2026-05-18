@@ -21,6 +21,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public class ChargingStateManager implements RobotApiService.ConnectionListener {
     private static final String TAG = "ChargingStateManager";
     private static final int LOW_BATTERY_THRESHOLD = 20;
+    private static final int FULL_BATTERY_THRESHOLD = 100;
     private static final int CHARGE_TIMEOUT_MS = 120000;
     private static final long CHARGE_CONFIRMATION_TIMEOUT_MS = 10000L;
     private static final long BATTERY_EVENT_DEBOUNCE_MS = 750L;
@@ -67,6 +68,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private boolean started = false;
     private boolean batteryListenerRegistered = false;
     private boolean autoChargeArmed = true;
+    private boolean fullChargeUndockArmed = true;
     private int chargeReqId = 8100;
     private long activeOperationToken = 0L;
     private String activeOperation = "idle";
@@ -265,6 +267,10 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     }
 
     public synchronized void requestStopCharging() {
+        requestStopChargingInternal(false);
+    }
+
+    private synchronized void requestStopChargingInternal(boolean autoUndockOnFullCharge) {
         releaseStaleTransitionLockIfNeeded();
         cancelChargeConfirmationTimeout();
         suppressChargingSignalsUntilMs = SystemClock.elapsedRealtime() + POST_STOP_CHARGING_SIGNAL_SUPPRESSION_MS;
@@ -272,6 +278,8 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
         boolean wasCharging = isCharging || "charging".equals(status);
         boolean wasNavigating = isNavigatingToCharger || "navigating_to_charger".equals(status) || "charge_obstacle".equals(status);
         final long operationToken = beginTransitionLock("stop");
+        final String stopStatus = autoUndockOnFullCharge ? "charge_completed" : "charge_stopped";
+        final String stopMessage = autoUndockOnFullCharge ? "Carga completa, saliendo del dock..." : "Carga detenida";
         pendingStartAutoTriggered = null;
         pendingStopOnReconnect = false;
         if (!robotApiService.isConnected() || api == null) {
@@ -280,7 +288,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             isNavigatingToCharger = false;
             autoTriggered = false;
             finishTransitionLock(operationToken, "stop");
-            updateDisconnectedSnapshot("charge_stopped", "Carga detenida", false, false, false);
+            updateDisconnectedSnapshot(stopStatus, stopMessage, false, false, false);
             return;
         }
 
@@ -294,7 +302,7 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
         isNavigatingToCharger = false;
         resetChargingSignalTracking();
         autoTriggered = false;
-        updateState("charge_stopped", "Carga detenida", batteryLevel, false, false, robotApiConnected, false);
+        updateState(stopStatus, stopMessage, batteryLevel, false, false, robotApiConnected, false);
 
         if (!wasCharging) {
             finishTransitionLock(operationToken, "stop");
@@ -480,8 +488,11 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             isCharging = nextIsCharging;
             lastBatteryDispatchAtMs = now;
 
-            if (nextBatteryLevel >= LOW_BATTERY_THRESHOLD) {
+            if (nextBatteryLevel > LOW_BATTERY_THRESHOLD) {
                 autoChargeArmed = true;
+            }
+            if (nextBatteryLevel < FULL_BATTERY_THRESHOLD) {
+                fullChargeUndockArmed = true;
             }
 
             if (nextIsCharging) {
@@ -498,9 +509,13 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                 updateState(status, message, batteryLevel, isCharging, isNavigatingToCharger, robotApiConnected, autoTriggered);
             }
 
-            if (nextBatteryLevel >= 0 && nextBatteryLevel < LOW_BATTERY_THRESHOLD && !nextIsCharging && !isNavigatingToCharger && !"charging".equals(status) && autoChargeArmed) {
+            if (nextBatteryLevel >= 0 && nextBatteryLevel <= LOW_BATTERY_THRESHOLD && !nextIsCharging && !isNavigatingToCharger && !"charging".equals(status) && !"charging_connecting".equals(status) && autoChargeArmed) {
                 autoChargeArmed = false;
                 mainHandler.post(() -> requestStartCharging(true));
+            }
+            if (nextBatteryLevel >= FULL_BATTERY_THRESHOLD && nextIsCharging && !isNavigatingToCharger && fullChargeUndockArmed && !"stop".equals(activeOperation)) {
+                fullChargeUndockArmed = false;
+                mainHandler.post(() -> requestStopChargingInternal(true));
             }
         } catch (Exception e) {
             logMalformedPayload("Invalid battery payload: " + data, now);

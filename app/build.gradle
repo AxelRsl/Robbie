@@ -1,6 +1,12 @@
+import org.gradle.internal.os.OperatingSystem
+
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 apply plugin: 'kotlin-kapt'
+
+def reactNativeAppDir = file("$rootDir/react-native-app")
+def reactNativeBundleOutput = file("$projectDir/src/main/assets/platform.android.bundle")
+def reactNativeAssetsDest = file("$projectDir/src/main/res")
 
 android {
     namespace 'com.robbie'
@@ -50,6 +56,33 @@ android {
         }
     }
 }
+
+task bundleReactNativeAssets(type: Exec) {
+    workingDir reactNativeAppDir
+    inputs.dir(file("$reactNativeAppDir/src"))
+    inputs.file(file("$reactNativeAppDir/index.js"))
+    inputs.file(file("$reactNativeAppDir/package.json"))
+    if (file("$reactNativeAppDir/babel.config.js").exists()) {
+        inputs.file(file("$reactNativeAppDir/babel.config.js"))
+    }
+    if (file("$reactNativeAppDir/tsconfig.json").exists()) {
+        inputs.file(file("$reactNativeAppDir/tsconfig.json"))
+    }
+    outputs.file(reactNativeBundleOutput)
+
+    doFirst {
+        reactNativeBundleOutput.parentFile.mkdirs()
+        reactNativeAssetsDest.mkdirs()
+    }
+
+    if (OperatingSystem.current().isWindows()) {
+        commandLine 'cmd', '/c', 'npm run bundle:android'
+    } else {
+        commandLine 'sh', '-lc', 'npm run bundle:android'
+    }
+}
+
+preBuild.dependsOn(bundleReactNativeAssets)
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'

@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.ainirobot.agent.AgentCore;
+import com.ainirobot.agent.OnAgentStatusChangedListener;
 import com.ainirobot.agent.OnTranscribeListener;
 import com.ainirobot.agent.PageAgent;
 import com.ainirobot.agent.action.Action;
@@ -48,6 +49,10 @@ public class RobbieAgentBridge implements IAgentBridge {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isListeningLight = false;
     private final Runnable restoreDefaultLight = () -> LedController.getInstance().restoreDefault();
+    private volatile boolean visionGateOpen = false;
+    private volatile boolean personVisible = false;
+    private volatile String lastAgentStatus = "reset_status";
+    private volatile String lastAgentMessage = "";
 
     @Override
     public void initialize(Activity activity,
@@ -86,6 +91,13 @@ public class RobbieAgentBridge implements IAgentBridge {
                     Log.d(TAG, "ASR final: " + text);
 
                     if (!text.isEmpty()) {
+                        if (!canProcessVoiceInput()) {
+                            Log.i(TAG, "Ignoring ASR final because no visible person is gated in front of robot");
+                            if (transcriptionCallback != null) {
+                                transcriptionCallback.onListeningGateChanged(false, personVisible);
+                            }
+                            return true;
+                        }
                         Log.d(TAG, "Sending to query: " + text);
                         com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text);
                         AgentCore.INSTANCE.query(text);
@@ -111,6 +123,19 @@ public class RobbieAgentBridge implements IAgentBridge {
                 }
             });
 
+            pageAgent.setOnAgentStatusChangedListener(new OnAgentStatusChangedListener() {
+                @Override
+                public boolean onStatusChanged(String status, String message) {
+                    lastAgentStatus = status != null ? status : "";
+                    lastAgentMessage = message != null ? message : "";
+                    Log.d(TAG, "Agent status changed: " + lastAgentStatus + " message=" + lastAgentMessage);
+                    if (transcriptionCallback != null) {
+                        transcriptionCallback.onAgentStatusChanged(lastAgentStatus, lastAgentMessage);
+                    }
+                    return false;
+                }
+            });
+
             // Registrar todas las acciones del robot
             registerEmotionActions();
             registerProductActions();
@@ -129,6 +154,13 @@ public class RobbieAgentBridge implements IAgentBridge {
 
     @Override
     public void query(String text) {
+        if (!canProcessVoiceInput()) {
+            Log.i(TAG, "Ignoring external query because no visible person is gated in front of robot");
+            if (transcriptionCallback != null) {
+                transcriptionCallback.onListeningGateChanged(false, personVisible);
+            }
+            return;
+        }
         AgentCore.INSTANCE.query(text);
     }
 
@@ -145,6 +177,15 @@ public class RobbieAgentBridge implements IAgentBridge {
     @Override
     public void setMicrophoneMuted(boolean muted) {
         AgentCore.INSTANCE.setMicrophoneMuted(muted);
+    }
+
+    @Override
+    public void setVisionListeningState(boolean gateOpen, boolean personVisible) {
+        this.visionGateOpen = gateOpen;
+        this.personVisible = personVisible;
+        if (transcriptionCallback != null) {
+            transcriptionCallback.onListeningGateChanged(gateOpen, personVisible);
+        }
     }
 
     @Override
@@ -179,7 +220,7 @@ public class RobbieAgentBridge implements IAgentBridge {
         AgentCore.INSTANCE.setEnableWakeFree(true);
         AgentCore.INSTANCE.setMicrophoneMuted(false);
         AgentCore.INSTANCE.setEnableVoiceBar(true);
-        Log.d(TAG, "Wake mode: OFF, wake-free=ON, mic=ON, voiceBar=ON");
+        Log.d(TAG, "Wake mode: OFF, wake-free=ON, mic=OPEN, voiceBar=ON");
     }
 
     /**
@@ -191,6 +232,10 @@ public class RobbieAgentBridge implements IAgentBridge {
                 "Hola, soy Robbie. Puedo ayudarte a encontrar productos o recomendarte lo que necesites.",
                 20000, null);
         }, 500);
+    }
+
+    private boolean canProcessVoiceInput() {
+        return visionGateOpen && personVisible;
     }
 
     // ==================== Registro de Actions ====================

@@ -118,6 +118,16 @@ public class EveActivity extends ReactActivity {
             public void onTTSUpdate(String text, boolean isFinal) {
                 emitTranscriptionEvent(text, false, isFinal);
             }
+
+            @Override
+            public void onAgentStatusChanged(String status, String message) {
+                emitAgentStatusEvent(status, message);
+            }
+
+            @Override
+            public void onListeningGateChanged(boolean gateOpen, boolean personVisible) {
+                emitListeningGateEvent(gateOpen, personVisible);
+            }
         };
     }
 
@@ -192,6 +202,34 @@ public class EveActivity extends ReactActivity {
                 .emit("onTranscription", params);
         } catch (Exception e) {
             Log.w(TAG, "No se pudo emitir evento de transcripcion: " + e.getMessage());
+        }
+    }
+
+    private void emitAgentStatusEvent(String status, String message) {
+        ReactContext ctx = getReactCtx();
+        if (ctx == null) return;
+        try {
+            WritableMap params = Arguments.createMap();
+            params.putString("status", status != null ? status : "");
+            params.putString("message", message != null ? message : "");
+            ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onAgentStatus", params);
+        } catch (Exception e) {
+            Log.w(TAG, "No se pudo emitir evento de estado del agente: " + e.getMessage());
+        }
+    }
+
+    private void emitListeningGateEvent(boolean gateOpen, boolean personVisible) {
+        ReactContext ctx = getReactCtx();
+        if (ctx == null) return;
+        try {
+            WritableMap params = Arguments.createMap();
+            params.putBoolean("gateOpen", gateOpen);
+            params.putBoolean("personVisible", personVisible);
+            ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onListeningGate", params);
+        } catch (Exception e) {
+            Log.w(TAG, "No se pudo emitir evento de compuerta de escucha: " + e.getMessage());
         }
     }
 

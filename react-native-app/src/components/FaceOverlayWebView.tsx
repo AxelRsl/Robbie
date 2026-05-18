@@ -140,17 +140,17 @@ const buildHtml = (emotion: string) => {
       </g>`
     : '';
   const leftEyeGlow = `
-      <g class="rf-glow rf-eye-glow" transform="translate(145,118)">
-        <path d="${pose.eyeL}" fill="#ffffff" opacity="0.1" transform="scale(1.22 1.15)" />
-        <path d="${pose.eyeL}" fill="#ffffff" opacity="0.058" transform="scale(1.12 1.08)" />
-        <path d="${pose.eyeL}" fill="#ffffff" opacity="0.026" transform="scale(1.05 1.03)" />
-      </g>`;
+        <g class="rf-glow rf-eye-glow">
+          <path d="${pose.eyeL}" fill="#ffffff" opacity="0.1" transform="scale(1.22 1.15)" />
+          <path d="${pose.eyeL}" fill="#ffffff" opacity="0.058" transform="scale(1.12 1.08)" />
+          <path d="${pose.eyeL}" fill="#ffffff" opacity="0.026" transform="scale(1.05 1.03)" />
+        </g>`;
   const rightEyeGlow = `
-      <g class="rf-glow rf-eye-glow" transform="translate(255,118)">
-        <path d="${pose.eyeR}" fill="#ffffff" opacity="0.1" transform="scale(1.22 1.15)" />
-        <path d="${pose.eyeR}" fill="#ffffff" opacity="0.058" transform="scale(1.12 1.08)" />
-        <path d="${pose.eyeR}" fill="#ffffff" opacity="0.026" transform="scale(1.05 1.03)" />
-      </g>`;
+        <g class="rf-glow rf-eye-glow">
+          <path d="${pose.eyeR}" fill="#ffffff" opacity="0.1" transform="scale(1.22 1.15)" />
+          <path d="${pose.eyeR}" fill="#ffffff" opacity="0.058" transform="scale(1.12 1.08)" />
+          <path d="${pose.eyeR}" fill="#ffffff" opacity="0.026" transform="scale(1.05 1.03)" />
+        </g>`;
   const mouthGlow = `
       <g class="rf-glow rf-mouth-glow" transform="translate(200,185)">
         <path d="${pose.mouth}" fill="#ffffff" opacity="0.095" transform="scale(1.2 1.16)" />
@@ -225,6 +225,8 @@ const buildHtml = (emotion: string) => {
         transform-origin: center;
       }
       #head,
+      #left-eye-group,
+      #right-eye-group,
       #mouth-group,
       #sleep-bubble,
       #sleep-drool {
@@ -312,13 +314,13 @@ const buildHtml = (emotion: string) => {
         <rect width="400" height="300" rx="40" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1.5" />
         <ellipse cx="200" cy="145" rx="160" ry="110" fill="url(#rf-ambientGlow)" />
         <g id="head">
-          ${leftEyeGlow}
-          ${rightEyeGlow}
           ${mouthGlow}
-          <g transform="translate(145,118)">
+          <g id="left-eye-group" transform="translate(145,118)">
+            ${leftEyeGlow}
             <path d="${pose.eyeL}" fill="#ffffff" />
           </g>
-          <g transform="translate(255,118)">
+          <g id="right-eye-group" transform="translate(255,118)">
+            ${rightEyeGlow}
             <path d="${pose.eyeR}" fill="#ffffff" />
           </g>
           <g id="mouth-group" transform="translate(200,185)">
@@ -342,15 +344,28 @@ const buildHtml = (emotion: string) => {
       const sleepBubble = document.getElementById('sleep-bubble');
       const sleepDrool = document.getElementById('sleep-drool');
       const mouth = document.getElementById('mouth-group');
-      const targetFps = sleeping ? 36 : 42;
+      const leftEye = document.getElementById('left-eye-group');
+      const rightEye = document.getElementById('right-eye-group');
+      const targetFps = sleeping ? 24 : (emotion === 'idle' ? 30 : 36);
       const frameInterval = 1000 / targetFps;
+      const baseLeftEyeX = 145;
+      const baseRightEyeX = 255;
+      const baseEyeY = 118;
+      const idleTargets = [-4.6, -3.2, 0, 0, 0, 3.2, 4.6];
       let lastFrameTs = 0;
       let rafId = 0;
       let lastHeadTransform = '';
+      let lastLeftEyeTransform = '';
+      let lastRightEyeTransform = '';
       let lastBubbleTransform = '';
       let lastDroolTransform = '';
       let lastDroolOpacity = '';
       let lastMouthTransform = '';
+      let idleEyeCurrentX = 0;
+      let idleEyeVelocityX = 0;
+      let idleEyeTargetX = 0;
+      let nextIdleRetargetAt = 900 + Math.random() * 1000;
+      let idleEyePhase = Math.PI * 0.37;
       const formatNumber = (value) => (Math.round(value * 100) / 100).toString();
       const setAttributeIfChanged = (node, name, value, lastValue) => {
         if (!node || value === lastValue) {
@@ -358,6 +373,12 @@ const buildHtml = (emotion: string) => {
         }
         node.setAttribute(name, value);
         return value;
+      };
+      const retargetIdleEyes = (now) => {
+        const nextTarget = idleTargets[Math.floor(Math.random() * idleTargets.length)];
+        idleEyeTargetX = nextTarget;
+        idleEyePhase += 0.24 + Math.random() * 0.28;
+        nextIdleRetargetAt = now + 1500 + Math.random() * 2600;
       };
       function animate(ts) {
         if (lastFrameTs && (ts - lastFrameTs) < frameInterval) {
@@ -373,6 +394,28 @@ const buildHtml = (emotion: string) => {
         const headTilt = baseHeadTilt + floatTilt;
         const headTransform = 'translate(200,' + formatNumber(150 + headY) + ') rotate(' + formatNumber(headTilt) + ') translate(-200,-150)';
         lastHeadTransform = setAttributeIfChanged(head, 'transform', headTransform, lastHeadTransform);
+        if (emotion === 'idle') {
+          if (ts >= nextIdleRetargetAt) {
+            retargetIdleEyes(ts);
+          }
+          const springForce = (idleEyeTargetX - idleEyeCurrentX) * 0.11;
+          idleEyeVelocityX = (idleEyeVelocityX + springForce) * 0.78;
+          idleEyeCurrentX += idleEyeVelocityX;
+          const idleMicroDrift = Math.sin(t * 0.33 + idleEyePhase) * 0.42 + Math.sin(t * 0.76 + idleEyePhase * 0.7) * 0.16;
+          const eyeX = Math.max(-5.4, Math.min(5.4, idleMicroDrift + idleEyeCurrentX));
+          const leftEyeTransform = 'translate(' + formatNumber(baseLeftEyeX + eyeX) + ',' + formatNumber(baseEyeY) + ')';
+          const rightEyeTransform = 'translate(' + formatNumber(baseRightEyeX + eyeX) + ',' + formatNumber(baseEyeY) + ')';
+          lastLeftEyeTransform = setAttributeIfChanged(leftEye, 'transform', leftEyeTransform, lastLeftEyeTransform);
+          lastRightEyeTransform = setAttributeIfChanged(rightEye, 'transform', rightEyeTransform, lastRightEyeTransform);
+        } else {
+          const returnForce = (0 - idleEyeCurrentX) * 0.14;
+          idleEyeVelocityX = (idleEyeVelocityX + returnForce) * 0.68;
+          idleEyeCurrentX += idleEyeVelocityX;
+          const leftEyeTransform = 'translate(' + formatNumber(baseLeftEyeX + idleEyeCurrentX) + ',' + formatNumber(baseEyeY) + ')';
+          const rightEyeTransform = 'translate(' + formatNumber(baseRightEyeX + idleEyeCurrentX) + ',' + formatNumber(baseEyeY) + ')';
+          lastLeftEyeTransform = setAttributeIfChanged(leftEye, 'transform', leftEyeTransform, lastLeftEyeTransform);
+          lastRightEyeTransform = setAttributeIfChanged(rightEye, 'transform', rightEyeTransform, lastRightEyeTransform);
+        }
         if (sleeping && sleepBubble && sleepDrool) {
           const bubbleScale = 0.34 + Math.max(0, Math.sin(t * 0.72)) * 0.18;
           const bubbleX = 217 + Math.sin(t * 0.85) * 1.1;
@@ -400,19 +443,30 @@ const buildHtml = (emotion: string) => {
 </html>`;
 };
 
+const IDLE_FACE_RETURN_DELAY_MS = 10 * 60 * 1000;
+
 export default function FaceOverlayWebView() {
   const currentMode = useAppStore(s => s.currentMode);
+  const agent = useAppStore(s => s.agent);
   const charging = useCharging();
+  const shouldShowIdleFace = currentMode === 'home';
   const isChargingMode = currentMode === 'charging'
     || charging.isCharging
     || charging.isNavigatingToCharger
     || charging.status === 'charge_obstacle';
-  const [visible, setVisible] = useState(false);
+  const shouldHideForPresence = agent.personVisible;
+  const shouldHideForAgentState = agent.status === 'thinking' || agent.status === 'processing';
+  const shouldForceHideFace = !isChargingMode && (shouldHideForPresence || shouldHideForAgentState);
+  const [visible, setVisible] = useState(shouldShowIdleFace);
   const [emotion, setEmotion] = useState('idle');
+  const [idleCooldownUntil, setIdleCooldownUntil] = useState(0);
+  const [isTemporaryEmotionActive, setIsTemporaryEmotionActive] = useState(false);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastNonChargingEmotionRef = useRef('idle');
+  const idleResumeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSignatureRef = useRef('');
   const lastSignatureAtRef = useRef(0);
+  const lastAgentEmotionRef = useRef<string | null>(null);
+  const forceHideWasActiveRef = useRef(false);
 
   const clearHideTimeout = useCallback(() => {
     if (hideTimeoutRef.current) {
@@ -421,18 +475,34 @@ export default function FaceOverlayWebView() {
     }
   }, []);
 
+  const clearIdleResumeTimeout = useCallback(() => {
+    if (idleResumeTimeoutRef.current) {
+      clearTimeout(idleResumeTimeoutRef.current);
+      idleResumeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startIdleCooldown = useCallback(() => {
+    clearIdleResumeTimeout();
+    setIdleCooldownUntil(Date.now() + IDLE_FACE_RETURN_DELAY_MS);
+  }, [clearIdleResumeTimeout]);
+
   useEffect(() => {
     if (isChargingMode) {
       clearHideTimeout();
+      clearIdleResumeTimeout();
+      setIsTemporaryEmotionActive(false);
+      lastAgentEmotionRef.current = null;
+      forceHideWasActiveRef.current = false;
       setEmotion('sleeping');
       setVisible(true);
       return;
     }
+
     if (emotion === 'sleeping') {
-      setVisible(false);
-      setEmotion(lastNonChargingEmotionRef.current || 'idle');
+      setEmotion('idle');
     }
-  }, [clearHideTimeout, emotion, isChargingMode]);
+  }, [clearHideTimeout, clearIdleResumeTimeout, emotion, isChargingMode]);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('onEmotionAction', (event) => {
@@ -440,31 +510,119 @@ export default function FaceOverlayWebView() {
       const persist = !!event?._persistSleeping;
       const signature = `${nextEmotion}|${persist}|${isChargingMode}`;
       const now = Date.now();
+
       if (signature === lastSignatureRef.current && now - lastSignatureAtRef.current < 250) {
         return;
       }
+
       lastSignatureRef.current = signature;
       lastSignatureAtRef.current = now;
+
       if (isChargingMode && nextEmotion !== 'sleeping') {
         return;
       }
-      if (!isChargingMode && nextEmotion !== 'sleeping') {
-        lastNonChargingEmotionRef.current = nextEmotion;
-      }
+
       clearHideTimeout();
+      clearIdleResumeTimeout();
+
+      if (shouldForceHideFace) {
+        setIsTemporaryEmotionActive(false);
+        setEmotion('idle');
+        setVisible(false);
+        return;
+      }
+
       setEmotion(nextEmotion);
       setVisible(true);
-      if (!persist && !isChargingMode) {
+
+      if (!persist && !isChargingMode && nextEmotion !== 'idle') {
+        setIsTemporaryEmotionActive(true);
         hideTimeoutRef.current = setTimeout(() => {
+          setIsTemporaryEmotionActive(false);
+          setEmotion('idle');
           setVisible(false);
+          startIdleCooldown();
         }, 5000);
+      } else {
+        setIsTemporaryEmotionActive(false);
       }
     });
+
     return () => {
       sub.remove();
       clearHideTimeout();
+      clearIdleResumeTimeout();
     };
-  }, [clearHideTimeout, isChargingMode]);
+  }, [clearHideTimeout, clearIdleResumeTimeout, isChargingMode, shouldForceHideFace, startIdleCooldown]);
+
+  useEffect(() => {
+    if (isChargingMode) {
+      return;
+    }
+
+    if (shouldForceHideFace) {
+      if (!forceHideWasActiveRef.current) {
+        startIdleCooldown();
+        forceHideWasActiveRef.current = true;
+      }
+      clearHideTimeout();
+      clearIdleResumeTimeout();
+      setIsTemporaryEmotionActive(false);
+      setEmotion('idle');
+      setVisible(false);
+      lastAgentEmotionRef.current = null;
+      return;
+    }
+
+    forceHideWasActiveRef.current = false;
+
+    if (isTemporaryEmotionActive) {
+      return;
+    }
+
+    let nextEmotion: string | null = null;
+    if (agent.status === 'listening' && agent.gateOpen && !agent.personVisible) {
+      nextEmotion = 'listening';
+    } else if (agent.status === 'reset_status') {
+      nextEmotion = null;
+    }
+
+    clearIdleResumeTimeout();
+
+    if (nextEmotion) {
+      lastAgentEmotionRef.current = nextEmotion;
+      setEmotion(nextEmotion);
+      setVisible(true);
+      return;
+    }
+
+    if (lastAgentEmotionRef.current !== null) {
+      lastAgentEmotionRef.current = null;
+      setEmotion('idle');
+      setVisible(false);
+      startIdleCooldown();
+      return;
+    }
+
+    setEmotion('idle');
+
+    if (!shouldShowIdleFace) {
+      setVisible(false);
+      return;
+    }
+
+    const remainingCooldownMs = idleCooldownUntil - Date.now();
+    if (remainingCooldownMs > 0) {
+      setVisible(false);
+      idleResumeTimeoutRef.current = setTimeout(() => {
+        setEmotion('idle');
+        setVisible(true);
+      }, remainingCooldownMs);
+      return;
+    }
+
+    setVisible(true);
+  }, [agent.gateOpen, agent.personVisible, agent.status, clearHideTimeout, clearIdleResumeTimeout, idleCooldownUntil, isChargingMode, isTemporaryEmotionActive, shouldForceHideFace, shouldShowIdleFace, startIdleCooldown]);
 
   const html = useMemo(() => buildHtml(emotion), [emotion]);
 
