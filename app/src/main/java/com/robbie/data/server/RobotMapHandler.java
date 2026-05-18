@@ -87,30 +87,33 @@ public class RobotMapHandler extends BaseHandler {
     private Response listMaps() {
         List<Map<String, Object>> robotMaps = new ArrayList<>();
         File mapDir = new File(MAP_DIR_PATH);
+        Response storageError = requireSharedStorageDirectory(mapDir);
+        if (storageError != null) {
+            return storageError;
+        }
 
         if (mapDir.exists() && mapDir.isDirectory()) {
             File[] mapFolders = mapDir.listFiles();
-            if (mapFolders != null) {
-                for (File folder : mapFolders) {
-                    if (folder.isDirectory()) {
-                        Map<String, Object> mapInfo = new HashMap<>();
-                        mapInfo.put("id", folder.getName());
-                        mapInfo.put("name", folder.getName());
-                        mapInfo.put("path", folder.getAbsolutePath());
+            if (mapFolders == null) {
+                return sharedStorageError(mapDir, "Could not enumerate robot map directories");
+            }
+            for (File folder : mapFolders) {
+                if (folder.isDirectory()) {
+                    Map<String, Object> mapInfo = new HashMap<>();
+                    mapInfo.put("id", folder.getName());
+                    mapInfo.put("name", folder.getName());
+                    mapInfo.put("path", folder.getAbsolutePath());
 
-                        // Check for map image (OrionStar saves as .jpeg next to folder)
-                        File mapImage = findMapImage(mapDir, folder.getName());
-                        mapInfo.put("hasImage", mapImage != null);
-                        mapInfo.put("imageUrl", mapImage != null ? "/api/robot-maps/" + folder.getName() + "/image" : null);
+                    File mapImage = findMapImage(mapDir, folder.getName());
+                    mapInfo.put("hasImage", mapImage != null);
+                    mapInfo.put("imageUrl", mapImage != null ? "/api/robot-maps/" + folder.getName() + "/image" : null);
 
-                        // Check for map zip file
-                        File mapZip = new File(mapDir, folder.getName() + ".zip");
-                        mapInfo.put("hasZip", mapZip.exists());
+                    File mapZip = new File(mapDir, folder.getName() + ".zip");
+                    mapInfo.put("hasZip", mapZip.exists());
 
-                        mapInfo.put("lastModified", folder.lastModified());
+                    mapInfo.put("lastModified", folder.lastModified());
 
-                        robotMaps.add(mapInfo);
-                    }
+                    robotMaps.add(mapInfo);
                 }
             }
         }
@@ -123,6 +126,10 @@ public class RobotMapHandler extends BaseHandler {
 
     private Response getMapImage(String mapId) {
         File mapDir = new File(MAP_DIR_PATH);
+        Response storageError = requireSharedStorageDirectory(mapDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File imageFile = findMapImage(mapDir, mapId);
 
         if (imageFile == null) {
@@ -140,6 +147,11 @@ public class RobotMapHandler extends BaseHandler {
     }
 
     private Response getMapPlaces(String mapId) {
+        File mapDir = new File(MAP_DIR_PATH);
+        Response storageError = requireSharedStorageDirectory(mapDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File placeFile = new File(MAP_DIR_PATH + "/" + mapId + "/place.json");
 
         if (!placeFile.exists()) {

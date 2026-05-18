@@ -3,8 +3,11 @@ package com.robbie.data.server;
 import android.util.Log;
 
 import com.google.gson.Gson;
+import com.robbie.RobotApp;
 import com.robbie.data.local.RobbieDatabase;
+import com.robbie.platform.storage.SharedStorageAccess;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +41,24 @@ public abstract class BaseHandler {
         Map<String, Object> map = new HashMap<>();
         map.put(key, value);
         return map;
+    }
+
+    protected Response requireSharedStorageDirectory(File directory) {
+        String issue = SharedStorageAccess.describeDirectoryIssue(RobotApp.getInstance(), directory);
+        if (issue == null) {
+            return null;
+        }
+        return sharedStorageError(directory, issue);
+    }
+
+    protected Response sharedStorageError(File directory, String error) {
+        String path = directory != null ? directory.getAbsolutePath() : "";
+        Log.e(getClass().getSimpleName(), error + " path=" + path);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("error", error);
+        payload.put("path", path);
+        payload.put("requiresAllFilesAccess", !SharedStorageAccess.hasAccess(RobotApp.getInstance()));
+        return jsonResponse(Response.Status.SERVICE_UNAVAILABLE, payload);
     }
 
     // ─── Request body ────────────────────────────────────────────────────────

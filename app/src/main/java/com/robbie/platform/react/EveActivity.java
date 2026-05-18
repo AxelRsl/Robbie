@@ -19,6 +19,7 @@ import com.robbie.platform.agent.IAgentBridge;
 import com.robbie.platform.agent.RobbieAgentBridge;
 import com.robbie.platform.agent.RobotActionHandler;
 import com.robbie.platform.retail.Product;
+import com.robbie.platform.storage.SharedStorageAccess;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
@@ -54,6 +55,8 @@ public class EveActivity extends ReactActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        SharedStorageAccess.ensureAccess(this);
 
         currentInstance = new WeakReference<>(this);
         actionHandler = new RobotActionHandler(this);
@@ -98,6 +101,14 @@ public class EveActivity extends ReactActivity {
         actionHandler.destroy();
         agentBridge.destroy();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (!SharedStorageAccess.hasAccess(this)) {
+            Log.w(TAG, "Shared storage access is still missing");
+        }
     }
 
     // ==================== Callbacks ====================

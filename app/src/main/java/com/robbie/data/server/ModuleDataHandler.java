@@ -70,6 +70,10 @@ public class ModuleDataHandler extends BaseHandler {
     // ── GET: List all modules ──────────────────────────────────────
     private Response listModules() {
         File moduledataDir = new File(MODULEDATA_PATH);
+        Response storageError = requireSharedStorageDirectory(moduledataDir);
+        if (storageError != null) {
+            return storageError;
+        }
         if (!moduledataDir.exists() || !moduledataDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND,
                     mapOf("error", "moduledata directory not found"));
@@ -78,13 +82,18 @@ public class ModuleDataHandler extends BaseHandler {
         List<Map<String, Object>> modules = new ArrayList<>();
         File[] moduleDirs = moduledataDir.listFiles(File::isDirectory);
         if (moduleDirs == null) {
-            return jsonResponse(Response.Status.OK, modules);
+            return sharedStorageError(moduledataDir,
+                    "Could not enumerate moduledata directories");
         }
 
         for (File moduleDir : moduleDirs) {
             Map<String, Object> moduleInfo = new HashMap<>();
             moduleInfo.put("name", moduleDir.getName());
             List<Map<String, Object>> configs = readModuleConfigs(moduleDir);
+            if (configs == null) {
+                return sharedStorageError(moduleDir,
+                        "Could not enumerate configs for module: " + moduleDir.getName());
+            }
             moduleInfo.put("configCount", configs.size());
             List<String> configIds = new ArrayList<>();
             for (Map<String, Object> config : configs) {
@@ -103,6 +112,11 @@ public class ModuleDataHandler extends BaseHandler {
 
     // ── GET: All configs for a module ──────────────────────────────
     private Response getModuleConfigs(String moduleName) {
+        File moduledataDir = new File(MODULEDATA_PATH);
+        Response storageError = requireSharedStorageDirectory(moduledataDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File moduleDir = new File(MODULEDATA_PATH, moduleName);
         if (!moduleDir.exists() || !moduleDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND,
@@ -110,6 +124,10 @@ public class ModuleDataHandler extends BaseHandler {
         }
 
         List<Map<String, Object>> configs = readModuleConfigs(moduleDir);
+        if (configs == null) {
+            return sharedStorageError(moduleDir,
+                    "Could not enumerate configs for module: " + moduleName);
+        }
         Map<String, Object> result = new HashMap<>();
         result.put("module", moduleName);
         result.put("configs", configs);
@@ -119,6 +137,11 @@ public class ModuleDataHandler extends BaseHandler {
 
     // ── GET: Single config by configId ─────────────────────────────
     private Response getSingleConfig(String moduleName, String configId) {
+        File moduledataDir = new File(MODULEDATA_PATH);
+        Response storageError = requireSharedStorageDirectory(moduledataDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File configDir = new File(MODULEDATA_PATH + "/" + moduleName, configId);
         if (!configDir.exists() || !configDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND,
@@ -126,7 +149,11 @@ public class ModuleDataHandler extends BaseHandler {
         }
 
         File[] jsonFiles = configDir.listFiles((dir, name) -> name.endsWith(".json"));
-        if (jsonFiles == null || jsonFiles.length == 0) {
+        if (jsonFiles == null) {
+            return sharedStorageError(configDir,
+                    "Could not enumerate JSON files in config: " + configId);
+        }
+        if (jsonFiles.length == 0) {
             return jsonResponse(Response.Status.NOT_FOUND,
                     mapOf("error", "No JSON files in config: " + configId));
         }
@@ -148,6 +175,11 @@ public class ModuleDataHandler extends BaseHandler {
 
     // ── PUT: Update a config ───────────────────────────────────────
     private Response updateConfig(String moduleName, String configId, IHTTPSession session) {
+        File moduledataDir = new File(MODULEDATA_PATH);
+        Response storageError = requireSharedStorageDirectory(moduledataDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File configDir = new File(MODULEDATA_PATH + "/" + moduleName, configId);
         if (!configDir.exists() || !configDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND,
@@ -155,7 +187,11 @@ public class ModuleDataHandler extends BaseHandler {
         }
 
         File[] jsonFiles = configDir.listFiles((dir, name) -> name.endsWith(".json"));
-        if (jsonFiles == null || jsonFiles.length == 0) {
+        if (jsonFiles == null) {
+            return sharedStorageError(configDir,
+                    "Could not enumerate JSON files in config: " + configId);
+        }
+        if (jsonFiles.length == 0) {
             return jsonResponse(Response.Status.NOT_FOUND,
                     mapOf("error", "No JSON files in config: " + configId));
         }
@@ -251,7 +287,7 @@ public class ModuleDataHandler extends BaseHandler {
     private List<Map<String, Object>> readModuleConfigs(File moduleDir) {
         List<Map<String, Object>> configs = new ArrayList<>();
         File[] subDirs = moduleDir.listFiles(File::isDirectory);
-        if (subDirs == null) return configs;
+        if (subDirs == null) return null;
 
         for (File subDir : subDirs) {
             if ("module_public".equals(subDir.getName())) continue;

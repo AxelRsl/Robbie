@@ -96,6 +96,10 @@ public class GuideRouteHandler extends BaseHandler {
     // ── GET: List all guide routes ──────────────────────────────────────
     private Response listGuideRoutes() {
         File guideDir = new File(MODULE_GUIDE_PATH);
+        Response storageError = requireSharedStorageDirectory(guideDir);
+        if (storageError != null) {
+            return storageError;
+        }
         if (!guideDir.exists() || !guideDir.isDirectory()) {
             Map<String, Object> result = new HashMap<>();
             result.put("routes", new ArrayList<>());
@@ -106,13 +110,15 @@ public class GuideRouteHandler extends BaseHandler {
 
         List<Map<String, Object>> routes = new ArrayList<>();
         File[] tourDirs = guideDir.listFiles(File::isDirectory);
-        if (tourDirs != null) {
-            for (File tourDir : tourDirs) {
-                if ("module_public".equals(tourDir.getName())) continue;
-                Map<String, Object> routeInfo = readTourConfig(tourDir);
-                if (routeInfo != null) {
-                    routes.add(routeInfo);
-                }
+        if (tourDirs == null) {
+            return sharedStorageError(guideDir,
+                    "Could not enumerate guide route directories");
+        }
+        for (File tourDir : tourDirs) {
+            if ("module_public".equals(tourDir.getName())) continue;
+            Map<String, Object> routeInfo = readTourConfig(tourDir);
+            if (routeInfo != null) {
+                routes.add(routeInfo);
             }
         }
 
@@ -125,6 +131,11 @@ public class GuideRouteHandler extends BaseHandler {
 
     // ── GET: Single guide route ────────────────────────────────────────
     private Response getGuideRoute(String tourId) {
+        File guideDir = new File(MODULE_GUIDE_PATH);
+        Response storageError = requireSharedStorageDirectory(guideDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File tourDir = new File(MODULE_GUIDE_PATH, tourId);
         if (!tourDir.exists() || !tourDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND, mapOf("error", "Tour not found: " + tourId));
@@ -236,6 +247,11 @@ public class GuideRouteHandler extends BaseHandler {
 
     // ── DELETE: Delete guide route ──────────────────────────────────────
     private Response deleteGuideRoute(String tourId) {
+        File guideDir = new File(MODULE_GUIDE_PATH);
+        Response storageError = requireSharedStorageDirectory(guideDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File tourDir = new File(MODULE_GUIDE_PATH, tourId);
         if (!tourDir.exists() || !tourDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND, mapOf("error", "Tour not found: " + tourId));
@@ -253,6 +269,11 @@ public class GuideRouteHandler extends BaseHandler {
 
     // ── Media: List media files ────────────────────────────────────────
     private Response listMedia(String tourId) {
+        File guideDir = new File(MODULE_GUIDE_PATH);
+        Response storageError = requireSharedStorageDirectory(guideDir);
+        if (storageError != null) {
+            return storageError;
+        }
         File tourDir = new File(MODULE_GUIDE_PATH, tourId);
         if (!tourDir.exists() || !tourDir.isDirectory()) {
             return jsonResponse(Response.Status.NOT_FOUND, mapOf("error", "Tour not found: " + tourId));
@@ -260,35 +281,35 @@ public class GuideRouteHandler extends BaseHandler {
 
         List<Map<String, Object>> media = new ArrayList<>();
         File[] files = tourDir.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) continue;
-                String name = file.getName();
-                // Skip JSON config files and tiny icon files
-                if (name.endsWith(".json")) continue;
+        if (files == null) {
+            return sharedStorageError(tourDir,
+                    "Could not enumerate media files for tour: " + tourId);
+        }
+        for (File file : files) {
+            if (file.isDirectory()) continue;
+            String name = file.getName();
+            if (name.endsWith(".json")) continue;
 
-                Map<String, Object> fileInfo = new HashMap<>();
-                fileInfo.put("name", name);
-                fileInfo.put("size", file.length());
-                fileInfo.put("lastModified", file.lastModified());
-                fileInfo.put("url", "/api/guide-routes/" + tourId + "/media/" + name);
+            Map<String, Object> fileInfo = new HashMap<>();
+            fileInfo.put("name", name);
+            fileInfo.put("size", file.length());
+            fileInfo.put("lastModified", file.lastModified());
+            fileInfo.put("url", "/api/guide-routes/" + tourId + "/media/" + name);
 
-                // Detect type
-                String lower = name.toLowerCase();
-                if (lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".avi")) {
-                    fileInfo.put("type", "video");
-                } else if (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".ogg")) {
-                    fileInfo.put("type", "audio");
-                } else if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
-                        || lower.endsWith(".gif") || lower.endsWith(".webp")) {
-                    fileInfo.put("type", "image");
-                } else if (lower.endsWith(".animator")) {
-                    fileInfo.put("type", "animation");
-                } else {
-                    fileInfo.put("type", "other");
-                }
-                media.add(fileInfo);
+            String lower = name.toLowerCase();
+            if (lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".avi")) {
+                fileInfo.put("type", "video");
+            } else if (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".ogg")) {
+                fileInfo.put("type", "audio");
+            } else if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                    || lower.endsWith(".gif") || lower.endsWith(".webp")) {
+                fileInfo.put("type", "image");
+            } else if (lower.endsWith(".animator")) {
+                fileInfo.put("type", "animation");
+            } else {
+                fileInfo.put("type", "other");
             }
+            media.add(fileInfo);
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -525,13 +546,11 @@ public class GuideRouteHandler extends BaseHandler {
         result.put("configFile", jsonFile.getName());
         result.put("path", tourDir.getAbsolutePath());
 
-        // Count media files
         File[] allFiles = tourDir.listFiles();
+        if (allFiles == null) return null;
         int mediaCount = 0;
-        if (allFiles != null) {
-            for (File f : allFiles) {
-                if (!f.isDirectory() && !f.getName().endsWith(".json")) mediaCount++;
-            }
+        for (File f : allFiles) {
+            if (!f.isDirectory() && !f.getName().endsWith(".json")) mediaCount++;
         }
         result.put("mediaCount", mediaCount);
 
