@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import FaceOverlayWebView from '@/components/FaceOverlayWebView';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, NativeEventEmitter, NativeModules } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, DeviceEventEmitter, NativeModules } from 'react-native';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { MenuScreen } from '@/screens/MenuScreen';
 import { RetailScreen } from '@/screens/RetailScreen';
@@ -60,37 +60,13 @@ function ChargingStopButton() {
   );
 }
 
-function AgentStatusOverlay() {
-  const agent = useAppStore((s) => s.agent);
-  const currentMode = useAppStore((s) => s.currentMode);
-  const selectedProduct = useAppStore((s) => s.selectedProduct);
-  const charging = useAppStore((s) => s.charging);
-
-  const visible = currentMode === 'home'
-    && !selectedProduct
-    && !charging.isCharging
-    && !charging.isNavigatingToCharger
-    && agent.status === 'listening'
-    && agent.gateOpen;
-  if (!visible) {
-    return null;
-  }
-
-  const statusLabel = 'Escuchando';
-
-  return (
-    <View style={styles.agentOverlay}>
-      <Text style={styles.agentOverlayTitle}>{statusLabel}</Text>
-      {!!agent.message && <Text style={styles.agentOverlayBody}>{agent.message}</Text>}
-    </View>
-  );
-}
 
 function AppContent() {
-  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, charging, agent, setAgentStatus, setListeningGate } = useAppStore();
+  const { currentMode, selectedProduct, setSelectedProduct, navigation, setNavigation, setCurrentMode, productsLoaded, setProducts, charging, agent, setAgentStatus, setListeningGate, searchResults, searchRecommendation, searchQuery, applyRetailSearchPayload } = useAppStore();
   const lastChargingUiModeRef = useRef(false);
   const shouldShowChargingUi = charging.isCharging || charging.isNavigatingToCharger || charging.status === 'charge_obstacle';
   const isIdleAgentState = !agent.status || agent.status === 'reset_status';
+  const hasActiveRetailSearch = searchResults.length > 0 || !!searchRecommendation || !!searchQuery;
   const shouldShowIdleFace = currentMode === 'home'
     && !selectedProduct
     && !agent.personVisible
@@ -111,8 +87,7 @@ function AppContent() {
     }
 
     // Escuchar eventos de navegacion desde el lado nativo
-    const eventEmitter = new NativeEventEmitter(NativeModules.DeviceEventEmitter);
-    const navigationListener = eventEmitter.addListener('onNavigation', (event) => {
+    const navigationListener = DeviceEventEmitter.addListener('onNavigation', (event) => {
       console.log('[App] Navigation event:', event);
       if (event.isNavigating) {
         setNavigation({
@@ -128,7 +103,7 @@ function AppContent() {
     });
 
     // Escuchar eventos de cambio de modo desde comandos de voz
-    const modeSwitchListener = eventEmitter.addListener('onModeSwitch', (event) => {
+    const modeSwitchListener = DeviceEventEmitter.addListener('onModeSwitch', (event) => {
       console.log('[App] Mode switch event:', event);
       let targetMode = event.mode;
       
@@ -141,25 +116,60 @@ function AppContent() {
       setCurrentMode(targetMode);
     });
 
-    const agentStatusListener = eventEmitter.addListener('onAgentStatus', (event) => {
+    const productSearchListener = DeviceEventEmitter.addListener('onProductSearch', (event) => {
+      const products = Array.isArray(event?.products) ? event.products : [];
+      const query = event?.query || '';
+      const recommendation = event?.recommendation || '';
+      const receivedAtMs = Date.now();
+      const emittedAtMs = typeof event?.emittedAtMs === 'number' ? event.emittedAtMs : 0;
+      const nativeToRnMs = emittedAtMs > 0 ? receivedAtMs - emittedAtMs : -1;
+
+      console.log('[App] Product search event:', { query, total: products.length, nativeToRnMs });
+      applyRetailSearchPayload({
+        results: products,
+        query,
+        recommendation,
+        mode: 'retail',
+      });
+    });
+
+    const productRecommendationListener = DeviceEventEmitter.addListener('onProductRecommendation', (event) => {
+      const products = Array.isArray(event?.products) ? event.products : [];
+      const explanation = event?.explanation || '';
+      const receivedAtMs = Date.now();
+      const emittedAtMs = typeof event?.emittedAtMs === 'number' ? event.emittedAtMs : 0;
+      const nativeToRnMs = emittedAtMs > 0 ? receivedAtMs - emittedAtMs : -1;
+
+      console.log('[App] Product recommendation event:', { total: products.length, nativeToRnMs });
+      applyRetailSearchPayload({
+        results: products,
+        query: 'Recomendaciones AI',
+        recommendation: explanation,
+        mode: 'retail',
+      });
+    });
+
+    const agentStatusListener = DeviceEventEmitter.addListener('onAgentStatus', (event) => {
       setAgentStatus(event?.status || 'reset_status', event?.message || '');
     });
 
-    const listeningGateListener = eventEmitter.addListener('onListeningGate', (event) => {
+    const listeningGateListener = DeviceEventEmitter.addListener('onListeningGate', (event) => {
       setListeningGate(!!event?.gateOpen, !!event?.personVisible);
     });
 
     return () => {
       navigationListener.remove();
       modeSwitchListener.remove();
+      productSearchListener.remove();
+      productRecommendationListener.remove();
       agentStatusListener.remove();
       listeningGateListener.remove();
     };
-  }, [setNavigation, setCurrentMode, setAgentStatus, setListeningGate]);
+  }, [applyRetailSearchPayload, setNavigation, setCurrentMode, setAgentStatus, setListeningGate]);
 
   // Refrescar productos cada vez que se entra a retail (por si el panel los actualizó)
   useEffect(() => {
-    if (currentMode === 'retail') {
+    if (currentMode === 'retail' && !hasActiveRetailSearch) {
       console.log('[App] Entrando a retail - refrescando productos...');
       CloudApi.refreshProducts().then((data) => {
         if (data.length > 0) {
@@ -170,7 +180,7 @@ function AppContent() {
         console.warn('[App] Error refrescando productos:', error);
       });
     }
-  }, [currentMode]);
+  }, [currentMode, hasActiveRetailSearch, setProducts]);
 
   useEffect(() => {
     if (shouldShowChargingUi) {
@@ -217,7 +227,6 @@ function AppContent() {
           onClose={() => setSelectedProduct(null)}
         />
       )}
-      <AgentStatusOverlay />
       {shouldRenderFaceOverlay && <FaceOverlayWebView />}
       {(shouldShowChargingUi || currentMode === 'charging') && <ChargingStopButton />}
     </View>
@@ -237,27 +246,5 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  agentOverlay: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    right: 14,
-    zIndex: 99998,
-    elevation: 99998,
-    backgroundColor: 'rgba(17, 24, 39, 0.82)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  agentOverlayTitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  agentOverlayBody: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 12,
-    marginTop: 2,
   },
 });

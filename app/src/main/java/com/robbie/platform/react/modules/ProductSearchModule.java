@@ -13,6 +13,7 @@ import com.facebook.react.bridge.WritableNativeMap;
 import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.dao.ProductDao;
 import com.robbie.data.local.entity.ProductEntity;
+import com.robbie.platform.retail.ProductSemanticMatcher;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -60,7 +61,11 @@ public class ProductSearchModule extends ReactContextBaseJavaModule {
     public void searchProducts(String query, Promise promise) {
         try {
             Log.i(TAG, "Buscando productos: " + query);
-            List<ProductEntity> products = productDao.searchProducts(query);
+            List<ProductEntity> products = ProductSemanticMatcher.search(
+                productDao.getAllProductsBlocking(),
+                query,
+                50
+            );
             WritableArray results = convertProductsToWritableArray(products);
             
             WritableMap response = new WritableNativeMap();

@@ -12,9 +12,22 @@ import com.robbie.core.navigation.TourExecutor;
 import com.robbie.RobotApp;
 import com.robbie.platform.retail.Product;
 import com.robbie.platform.retail.RobbieConfig;
-import com.robbie.platform.retail.RobbieRecommendationEngine;
+import com.robbie.platform.retail.ProductSemanticMatcher;
+import com.robbie.platform.retail.AsyncTaskHelper;
+import com.robbie.platform.retail.ProductCatalogCache;
 import com.robbie.platform.robot.ChargingStateManager;
 import com.robbie.platform.robot.RobotApiService;
+import com.robbie.platform.oem.person.TrackedPerson;
+import com.robbie.platform.oem.person.OrionPersonGatewayConfig;
+import com.robbie.platform.oem.person.OrionPersonGatewayImpl;
+import com.robbie.platform.tracking.FaceTrackManager;
+import com.robbie.platform.tracking.RobbieFaceTrackConfig;
+import com.robbie.platform.tracking.RobbieFaceTrackDiagnostics;
+import com.robbie.platform.tracking.RobbieFaceTrackListener;
+import com.robbie.platform.tracking.RobbieFaceTrackMetrics;
+import com.robbie.platform.tracking.RobbieFaceTrackSnapshot;
+import com.robbie.platform.tracking.RobbieFaceTrackState;
+import com.robbie.platform.tracking.RobbieFaceTrackManager;
 import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.entity.ProductEntity;
 
@@ -22,9 +35,6 @@ import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.CommandListener;
 import com.ainirobot.coreservice.client.Definition;
-import com.ainirobot.coreservice.client.person.PersonApi;
-import com.ainirobot.coreservice.client.person.PersonListener;
-import com.ainirobot.coreservice.client.listener.Person;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -46,34 +56,24 @@ public class RobotActionHandler {
 
     private static final String TAG = "RobotActionHandler";
     private static final String SERVICE_OWNER = "RobotActionHandler";
+    private static final String FACE_TRACK_GATEWAY_OWNER = "RobotActionHandlerFaceGateway";
+    private static final String FACE_TRACK_MANAGER_OWNER = "RobotActionHandlerFaceTrack";
     private static RobotActionHandler instance;
-    private static final int CHARGE_TIMEOUT = 120000;
-    private static final int FACE_DETECTION_RANGE_METERS = 3;
-    private static final long FACE_TRACK_WATCHDOG_INTERVAL_MS = 1200L;
-    private static final long FACE_VISIBILITY_GRACE_MS = 1500L;
-    private static final long FACE_REACQUIRE_DELAY_MS = 300L;
-    private static final long FACE_RETRY_DELAY_MS = 500L;
-    private static final long FACE_TRACK_LOST_TIMEOUT_MS = 8000L;
-    private static final float FACE_TRACK_MAX_DISTANCE_METERS = 5.0f;
+    private static final long FACE_VISIBILITY_GRACE_MS = 4000L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final RobbieRecommendationEngine robbieRecommendationEngine;
     private final android.content.Context context;
     private final RobotApiService robotApiService = RobotApiService.getInstance();
     private final ChargingStateManager chargingStateManager = ChargingStateManager.getInstance();
+    private final FaceTrackManager faceTrackManager;
+    private final RobbieFaceTrackListener faceTrackDiagnosticsListener;
 
     private RobotApi robotApi;
-    private int faceTrackReqId = 1001;
     private int lightReqId = 2001;
     private int navReqId = 3001;
 
     private boolean robotApiConnected = false;
     private boolean faceTrackActive = false;
-    private boolean isFollowing = false;
-    private int currentFollowId = -1;
-    private int currentFollowReqId = -1;
-    private PersonListener personListener;
-    private Runnable faceTrackingWatchdogRunnable;
     private long lastVisiblePersonAtMs = 0L;
     private boolean microphoneOpenForVisiblePerson = false;
     private boolean lastReportedVisiblePerson = false;
@@ -85,6 +85,10 @@ public class RobotActionHandler {
     private boolean lastChargingUiActive = false;
     private final List<String> mapPlaces = new ArrayList<>();
     private final ProceduralAnimationManager animationManager;
+    private RobbieFaceTrackDiagnostics lastFaceTrackDiagnostics;
+    private RobbieFaceTrackState lastLoggedFaceTrackState;
+    private Integer lastLoggedTargetId = null;
+    private boolean lastLoggedFollowing = false;
 
     private IAgentBridge agentBridge;
     private ActionResultCallback resultCallback;
@@ -107,8 +111,27 @@ public class RobotActionHandler {
 
     public RobotActionHandler(android.content.Context context) {
         this.context = context.getApplicationContext();
-        this.robbieRecommendationEngine = new RobbieRecommendationEngine();
         this.animationManager = ProceduralAnimationManager.getInstance(this.context);
+        OrionPersonGatewayImpl personGateway = new OrionPersonGatewayImpl(
+            this.context,
+            robotApiService,
+            new OrionPersonGatewayConfig(FACE_TRACK_GATEWAY_OWNER, FACE_TRACK_GATEWAY_OWNER)
+        );
+        this.faceTrackManager = new RobbieFaceTrackManager(
+            this.context,
+            personGateway,
+            robotApiService,
+            new RobbieFaceTrackConfig(FACE_TRACK_MANAGER_OWNER, FACE_TRACK_MANAGER_OWNER)
+        );
+        this.faceTrackDiagnosticsListener = new RobbieFaceTrackListener() {
+            @Override
+            public void onDiagnosticsUpdated(RobbieFaceTrackDiagnostics diagnostics) {
+                mainHandler.post(() -> handleFaceTrackDiagnostics(diagnostics));
+            }
+        };
+        this.faceTrackManager.addListener(this.faceTrackDiagnosticsListener);
+        this.lastFaceTrackDiagnostics = this.faceTrackManager.currentDiagnostics();
+        this.lastLoggedFaceTrackState = this.lastFaceTrackDiagnostics.getSnapshot().getState();
         instance = this;
     }
 
@@ -119,8 +142,7 @@ public class RobotActionHandler {
             robotApiConnected = true;
             loadPlaceList();
             if (faceTrackActive) {
-                registerPersonDetection();
-                tryFollowVisiblePerson();
+                faceTrackManager.requestEvaluation("robot_action_handler_connected");
             }
             TourExecutor.getInstance().setChassisController(new TourExecutor.ChassisController() {
                 @Override
@@ -140,20 +162,12 @@ public class RobotActionHandler {
         @Override
         public void onRobotApiDisconnected() {
             robotApiConnected = false;
-            isFollowing = false;
-            currentFollowId = -1;
-            currentFollowReqId = -1;
-            applyVoiceListeningState(false);
             Log.w(TAG, "RobotApi disconnected");
         }
 
         @Override
         public void onRobotApiDisabled() {
             robotApiConnected = false;
-            isFollowing = false;
-            currentFollowId = -1;
-            currentFollowReqId = -1;
-            applyVoiceListeningState(false);
             Log.w(TAG, "RobotApi disabled");
         }
     };
@@ -222,6 +236,7 @@ public class RobotActionHandler {
 
     private void ensureRobotServicesStarted() {
         robotApiService.retain(SERVICE_OWNER, context);
+        robotApiService.startVisionSdkProbe(context);
         chargingStateManager.start(context, SERVICE_OWNER);
         robotApiService.connect(context, null);
         if (robotServicesStarted) {
@@ -273,52 +288,87 @@ public class RobotActionHandler {
      * Este es el punto central donde todas las acciones del LLM llegan.
      */
     public boolean handleAction(String actionName, Bundle params) {
+        return handleAction(actionName, params, null);
+    }
+
+    public boolean handleAction(String actionName, Bundle params, IAgentBridge.ActionCompletionCallback completionCallback) {
         Log.d(TAG, "handleAction: " + actionName);
+        boolean handled;
+        boolean asyncCompletion = false;
         switch (actionName) {
             case "com.robbie.action.SHOW_HAPPY":
-                return handleEmotion("happy", params);
+                handled = handleEmotion("happy", params);
+                break;
             case "com.robbie.action.SHOW_SAD":
-                return handleEmotion("sad", params);
+                handled = handleEmotion("sad", params);
+                break;
             case "com.robbie.action.SHOW_ANGRY":
-                return handleEmotion("angry", params);
+                handled = handleEmotion("angry", params);
+                break;
             case "com.robbie.action.RECOMMEND_PRODUCTS":
-                return handleRecommendProducts(params);
+                asyncCompletion = true;
+                handled = handleRecommendProducts(params, completionCallback);
+                break;
             case "com.robbie.action.SHOW_PRODUCT_DETAIL":
-                return handleShowProductDetail(params);
+                asyncCompletion = true;
+                handled = handleShowProductDetail(params, completionCallback);
+                break;
             case "com.robbie.action.NAVIGATE_TO_LOCATION":
-                return handleNavigateToLocation(params);
+                handled = handleNavigateToLocation(params);
+                break;
             case "com.robbie.action.STOP_NAVIGATION":
-                return handleStopNavigation();
+                handled = handleStopNavigation();
+                break;
             case "com.robbie.action.SEARCH_PRODUCTS":
-                return handleSearchProductsFromDb(params);
-            case "com.robbie.action.search_products":
-                return handleSearchProductsFromDb(params);
+                asyncCompletion = true;
+                handled = handleSearchProductsFromDb(params, completionCallback);
+                break;
             case "com.robbie.action.SET_LED_COLOR":
-                return handleSetLedColor(params);
+                handled = handleSetLedColor(params);
+                break;
             case "com.robbie.action.START_LED_EFFECT":
-                return handleStartLedEffect(params);
+                handled = handleStartLedEffect(params);
+                break;
             case "com.robbie.action.RESTORE_LED_DEFAULT":
-                return handleRestoreLedDefault();
+                handled = handleRestoreLedDefault();
+                break;
             case "com.robbie.action.START_TOUR":
-                return handleStartTour(params);
+                handled = handleStartTour(params);
+                break;
             case "com.robbie.action.STOP_TOUR":
-                return handleStopTour();
+                handled = handleStopTour();
+                break;
             case "com.robbie.action.SWITCH_MODE":
-                return handleSwitchMode(params);
+                handled = handleSwitchMode(params);
+                break;
             case "com.robbie.action.GO_TO_MENU":
-                return handleGoToMenu();
+                handled = handleGoToMenu();
+                break;
             case "com.robbie.action.ENTER_RETAIL_MODE":
-                return handleEnterRetailMode();
+                handled = handleEnterRetailMode();
+                break;
             case "com.robbie.action.ENTER_EXHIBITION_MODE":
-                return handleEnterExhibitionMode();
+                handled = handleEnterExhibitionMode();
+                break;
             case "com.robbie.action.GO_CHARGE":
-                return handleGoCharge();
+                handled = handleGoCharge();
+                break;
             case "com.robbie.action.STOP_CHARGE":
-                return handleStopCharge();
+                handled = handleStopCharge();
+                break;
             default:
                 Log.w(TAG, "Unknown action: " + actionName);
-                return false;
+                handled = false;
+                break;
         }
+        if (!asyncCompletion && completionCallback != null) {
+            if (handled) {
+                completionCallback.onSuccess();
+            } else {
+                completionCallback.onFailure("Action no manejada: " + actionName);
+            }
+        }
+        return handled;
     }
 
     // ==================== Emociones ====================
@@ -335,36 +385,50 @@ public class RobotActionHandler {
 
     // ==================== Productos ====================
 
-    private boolean handleRecommendProducts(Bundle params) {
+    private boolean handleRecommendProducts(Bundle params, IAgentBridge.ActionCompletionCallback completionCallback) {
         if (params == null) return false;
         String need = params.getString("user_need", "");
         String restriction = params.getString("dietary_restriction", "");
         if (need.isEmpty()) return false;
 
         Log.d(TAG, "RECOMMEND: need=" + need + " restriction=" + restriction);
-        mainHandler.post(() -> triggerRecommendation(need, restriction));
-        return true;
+        Bundle searchParams = new Bundle();
+        searchParams.putString("query", need);
+        if (!restriction.isEmpty()) {
+            searchParams.putString("recommendation", restriction);
+        }
+        return handleSearchProductsFromDb(searchParams, completionCallback);
     }
 
-    private boolean handleShowProductDetail(Bundle params) {
+    private boolean handleShowProductDetail(Bundle params, IAgentBridge.ActionCompletionCallback completionCallback) {
         if (params == null) return false;
         String name = params.getString("product_name", "").toLowerCase();
         if (name.isEmpty()) return false;
 
         Log.d(TAG, "DETAIL: name=" + name);
-        mainHandler.post(() -> {
+        AsyncTaskHelper.execute(() -> {
             List<Product> products = getProducts();
+            boolean found = false;
             for (Product p : products) {
                 if (p.getName().toLowerCase().contains(name)) {
-                    speakProductInfo(p);
+                    Product matchedProduct = p;
+                    found = true;
+                    AsyncTaskHelper.runOnMain(() -> speakProductInfo(matchedProduct));
                     break;
+                }
+            }
+            if (completionCallback != null) {
+                if (found) {
+                    completionCallback.onSuccess();
+                } else {
+                    completionCallback.onFailure("Producto no encontrado");
                 }
             }
         });
         return true;
     }
 
-    private boolean handleSearchProductsFromDb(Bundle params) {
+    private boolean handleSearchProductsFromDb(Bundle params, IAgentBridge.ActionCompletionCallback completionCallback) {
         String query = params != null ? params.getString("query", "") : "";
         String recommendation = params != null ? params.getString("recommendation", "") : "";
         Log.d(TAG, "SEARCH_DB: query=" + query + ", recommendation=" + recommendation);
@@ -372,138 +436,56 @@ public class RobotActionHandler {
         if (query.isEmpty()) {
             if (agentBridge != null)
                 agentBridge.tts("No entendi que producto buscas. Puedes decirme el nombre, categoria o marca.", 10000);
+            if (completionCallback != null) {
+                completionCallback.onFailure("Consulta vacia");
+            }
             return true;
         }
 
-        mainHandler.post(() -> {
+        AsyncTaskHelper.execute(() -> {
             try {
-                RobbieDatabase db = RobbieDatabase.getInstance(context);
-                
-                // DEBUG: Verificar total de productos en BD
-                List<ProductEntity> allProducts = db.productDao().getAllProductsSync();
-                Log.i(TAG, "Total products in DB: " + allProducts.size());
+                List<ProductEntity> allProducts = getProductsFromDb();
+                Log.i(TAG, "Total products in catalog cache: " + allProducts.size());
                 if (!allProducts.isEmpty()) {
                     ProductEntity first = allProducts.get(0);
                     Log.d(TAG, "Sample product: " + first.getName() + " | " + first.getCategory() + " | " + first.getBrand());
                 }
-                
-                // Detectar si es una consulta de recomendación (palabras clave como "necesito", "recomienda", "ayuda")
-                String queryLower = query.toLowerCase();
-                boolean isRecommendationQuery = queryLower.contains("necesito") || 
-                                              queryLower.contains("recomienda") || 
-                                              queryLower.contains("ayuda") ||
-                                              queryLower.contains("quiero") ||
-                                              queryLower.contains("busco algo para");
-                
-                if (isRecommendationQuery && !allProducts.isEmpty()) {
-                    // Usar motor de recomendaciones AI
-                    Log.i(TAG, "Using AI recommendation engine for query: " + query);
-                    robbieRecommendationEngine.recommend(allProducts, query, null, 
-                        new RobbieRecommendationEngine.RecommendationCallback() {
-                            @Override
-                            public void onResult(String explanation, List<String> recommendedProductIds) {
-                                mainHandler.post(() -> {
-                                    // Convertir IDs a ProductEntity
-                                    List<ProductEntity> recommendedProducts = new ArrayList<>();
-                                    for (String id : recommendedProductIds) {
-                                        for (ProductEntity p : allProducts) {
-                                            if (p.getId().equals(id)) {
-                                                recommendedProducts.add(p);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    
-                                    Log.i(TAG, "AI recommended " + recommendedProducts.size() + " products");
-                                    
-                                    if (resultCallback != null) {
-                                        resultCallback.onProductSearchFromDb(query, explanation, recommendedProducts);
-                                        resultCallback.onModeSwitch("retail");
-                                    }
-
-                                    String ttsResponse = explanation + ". Te muestro " + recommendedProducts.size() + " productos recomendados.";
-                                    if (!recommendedProducts.isEmpty()) {
-                                        ProductEntity first = recommendedProducts.get(0);
-                                        ttsResponse += " El primero es " + first.getName();
-                                        if (first.getPrice() > 0) {
-                                            ttsResponse += " con precio de $" + String.format("%.2f", first.getPrice());
-                                        }
-                                    }
-                                    if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
-                                });
-                            }
-
-                            @Override
-                            public void onError(String error) {
-                                Log.e(TAG, "AI recommendation error: " + error);
-                                // Fallback a búsqueda normal
-                                performNormalSearch(db, allProducts, query, recommendation);
-                            }
-                        });
-                } else {
-                    // Búsqueda normal por nombre/categoría
-                    performNormalSearch(db, allProducts, query, recommendation);
-                }
+                performNormalSearch(allProducts, query, recommendation, completionCallback);
             } catch (Exception e) {
                 Log.e(TAG, "Error in SEARCH_PRODUCTS", e);
                 if (agentBridge != null)
                     agentBridge.tts("Lo siento, hubo un error al buscar productos.", 10000);
+                if (completionCallback != null) {
+                    completionCallback.onFailure(e.getMessage());
+                }
             }
         });
         return true;
     }
     
-    private void performNormalSearch(RobbieDatabase db, List<ProductEntity> allProducts, String query, String recommendation) {
-        // Buscar productos
-        List<ProductEntity> products = db.productDao().searchProducts(query);
+    private void performNormalSearch(List<ProductEntity> allProducts, String query, String recommendation, IAgentBridge.ActionCompletionCallback completionCallback) {
+        long searchStartedAtMs = SystemClock.elapsedRealtime();
+        List<ProductEntity> products = ProductSemanticMatcher.search(allProducts, query, 20);
+        Log.i(TAG, "Semantic search took " + (SystemClock.elapsedRealtime() - searchStartedAtMs) + "ms for query: '" + query + "'");
         Log.i(TAG, "Found " + products.size() + " products for query: '" + query + "'");
         
-        // FALLBACK: Si no encuentra nada, usar estrategias alternativas
+        // Fallback: try individual words if full query found nothing
         if (products.isEmpty() && !allProducts.isEmpty()) {
-            android.util.Log.w(TAG, "No results for '" + query + "', trying fallback strategies...");
-            
-            // Estrategia 1: Buscar por palabras individuales
+            android.util.Log.w(TAG, "No results for '" + query + "', trying word-by-word fallback...");
             String[] words = query.toLowerCase().split("\\s+");
             for (String word : words) {
-                if (word.length() >= 3) { // Solo palabras de 3+ caracteres
-                    List<ProductEntity> wordResults = db.productDao().searchProducts(word);
+                if (word.length() >= 3) {
+                    List<ProductEntity> wordResults = ProductSemanticMatcher.search(allProducts, word, 20);
                     if (!wordResults.isEmpty()) {
                         products = wordResults;
-                        android.util.Log.i(TAG, "Found " + products.size() + " products with word: " + word);
+                        android.util.Log.i(TAG, "Fallback found " + products.size() + " products with word: " + word);
                         break;
                     }
                 }
             }
-            
-            // Estrategia 2: Si aún no hay resultados, buscar por categorías comunes
-            if (products.isEmpty()) {
-                String[] commonCategories = {"proteina", "vitamina", "suplemento", "energia", "salud"};
-                String queryLower = query.toLowerCase();
-                for (String category : commonCategories) {
-                    if (queryLower.contains(category)) {
-                        products = db.productDao().getProductsByCategory(category);
-                        if (!products.isEmpty()) {
-                            android.util.Log.i(TAG, "Found " + products.size() + " products in category: " + category);
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            // Estrategia 3: Como último recurso, mostrar productos aleatorios
-            if (products.isEmpty()) {
-                int maxShow = Math.min(5, allProducts.size());
-                products = allProducts.subList(0, maxShow);
-                android.util.Log.i(TAG, "Showing " + products.size() + " random products as fallback");
-            }
         }
         
         Log.i(TAG, "Final results: " + products.size() + " products for: " + query);
-
-        if (resultCallback != null) {
-            resultCallback.onProductSearchFromDb(query, recommendation, products);
-            resultCallback.onModeSwitch("retail");
-        }
 
         String ttsResponse;
         if (!recommendation.isEmpty()) {
@@ -518,19 +500,18 @@ public class RobotActionHandler {
                 ttsResponse += " con precio de $" + String.format("%.2f", first.getPrice());
             }
         }
-        if (agentBridge != null) agentBridge.tts(ttsResponse, 15000);
-    }
-
-    private void triggerRecommendation(String userNeed, String restriction) {
-        // Crear Bundle con los parámetros para handleSearchProductsFromDb
-        Bundle params = new Bundle();
-        params.putString("query", userNeed);
-        if (restriction != null && !restriction.isEmpty()) {
-            params.putString("recommendation", restriction);
-        }
-        
-        // Usar el mismo flujo que handleSearchProductsFromDb
-        handleSearchProductsFromDb(params);
+        final List<ProductEntity> finalProducts = new ArrayList<>(products);
+        final String finalTtsResponse = ttsResponse;
+        AsyncTaskHelper.runOnMain(() -> {
+            if (resultCallback != null) {
+                resultCallback.onProductSearchFromDb(query, recommendation, finalProducts);
+                resultCallback.onModeSwitch("retail");
+            }
+            if (agentBridge != null) agentBridge.tts(finalTtsResponse, 15000);
+            if (completionCallback != null) {
+                completionCallback.onSuccess();
+            }
+        });
     }
 
     private void showRecommendation(String explanation, List<String> productIds) {
@@ -896,285 +877,90 @@ public class RobotActionHandler {
 
     public void startFaceTracking() {
         ensureRobotServicesStarted();
-        faceTrackActive = true;
-        lastVisiblePersonAtMs = 0L;
-        applyVoiceListeningState(false);
-        scheduleFaceTrackingWatchdog();
-        if (robotApiConnected) {
-            registerPersonDetection();
-            pollFaceTrackingState();
-        }
-    }
-
-    private void registerPersonDetection() {
-        if (personListener != null) {
-            return;
-        }
-        personListener = new PersonListener() {
-            @Override
-            public void personChanged() {
-                super.personChanged();
-                if (faceTrackActive) {
-                    pollFaceTrackingState();
-                }
-            }
-        };
-        PersonApi.getInstance().registerPersonListener(personListener);
-        Log.d(TAG, "PersonListener registered");
-    }
-
-    private void tryFollowVisiblePerson() {
-        if (!robotApiConnected || robotApi == null || !faceTrackActive || isFollowing) return;
-        try {
-            Person best = findBestVisiblePerson(getVisibleFaces());
-            if (best != null) {
-                int personId = best.getId();
-                if (personId >= 0) {
-                    Log.d(TAG, "Person found (id=" + personId + ", dist=" + best.getDistance() + "m), starting focus follow");
-                    doStartFocusFollow(personId);
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "tryFollowVisiblePerson error", e);
-        }
-    }
-
-    private void doStartFocusFollow(int personId) {
-        if (!robotApiConnected || robotApi == null || isFollowing) return;
-        final int requestId = faceTrackReqId++;
-        isFollowing = true;
-        currentFollowId = personId;
-        currentFollowReqId = requestId;
-        try {
-            int result = robotApi.startFocusFollow(
-                requestId, personId, FACE_TRACK_LOST_TIMEOUT_MS, FACE_TRACK_MAX_DISTANCE_METERS, true,
-                new ActionListener() {
-                    @Override
-                    public void onResult(int status, String result) {
-                        Log.d(TAG, "FocusFollow ended: " + result);
-                        if (currentFollowReqId != requestId) {
-                            return;
-                        }
-                        clearCurrentFollowState();
-                        if (faceTrackActive) {
-                            mainHandler.postDelayed(() -> pollFaceTrackingState(), FACE_RETRY_DELAY_MS);
-                        }
-                    }
-
-                    @Override
-                    public void onError(int errorCode, String error) {
-                        Log.w(TAG, "FocusFollow error: " + error);
-                        if (currentFollowReqId != requestId) {
-                            return;
-                        }
-                        if (errorCode == Definition.ACTION_RESPONSE_ALREADY_RUN) {
-                            isFollowing = true;
-                            currentFollowId = personId;
-                            currentFollowReqId = requestId;
-                            return;
-                        }
-                        clearCurrentFollowState();
-                        if (faceTrackActive) {
-                            mainHandler.postDelayed(() -> pollFaceTrackingState(), FACE_RETRY_DELAY_MS);
-                        }
-                    }
-
-                    @Override
-                    public void onStatusUpdate(int statusCode, String status) {
-                        Log.d(TAG, "FocusFollow status: " + status);
-                        if (currentFollowReqId != requestId) {
-                            return;
-                        }
-                        if (statusCode == Definition.STATUS_TRACK_TARGET_SUCCEED || statusCode == Definition.STATUS_GUEST_APPEAR) {
-                            applyVoiceListeningState(true);
-                            return;
-                        }
-                        if (statusCode == Definition.STATUS_GUEST_LOST || statusCode == Definition.STATUS_GUEST_FARAWAY) {
-                            handleFocusFollowLost(requestId);
-                            return;
-                        }
-                        try {
-                            org.json.JSONObject json = new org.json.JSONObject(status);
-                            String statusStr = json.optString("status", "");
-                            if ("guest_lost".equalsIgnoreCase(statusStr)
-                                || String.valueOf(Definition.STATUS_GUEST_LOST).equals(statusStr)) {
-                                handleFocusFollowLost(requestId);
-                            }
-                        } catch (Exception e) {
-                            if (status != null && (status.contains("lost") || status.contains("LOST"))) {
-                                handleFocusFollowLost(requestId);
-                            }
-                        }
-                    }
-                });
-            Log.d(TAG, "startFocusFollow(id=" + personId + ") result=" + result);
-            if (result != 0) {
-                clearCurrentFollowState();
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Could not start focus follow", e);
-            clearCurrentFollowState();
-        }
+        // Delegated to OrionStar wake-free — no custom face tracking
+        Log.i(TAG, "Face tracking delegated to OrionStar wake-free");
     }
 
     public void stopFaceTracking() {
-        faceTrackActive = false;
-        cancelFaceTrackingWatchdog();
-        int activeFollowReqId = currentFollowReqId;
-        lastVisiblePersonAtMs = 0L;
-        clearCurrentFollowState();
-        applyVoiceListeningState(false);
-        try {
-            if (personListener != null) {
-                PersonApi.getInstance().unregisterPersonListener(personListener);
-                personListener = null;
-            }
-            if (robotApi != null && robotApiConnected) {
-                int stopReqId = activeFollowReqId >= 0 ? activeFollowReqId : faceTrackReqId++;
-                robotApi.stopFocusFollow(stopReqId);
-                Log.d(TAG, "Focus follow stopped");
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Could not stop face tracking", e);
-        }
+        // Delegated to OrionStar wake-free — no custom face tracking
+        Log.i(TAG, "Face tracking stop delegated to OrionStar wake-free");
     }
 
-    private void pollFaceTrackingState() {
-        if (!faceTrackActive) {
-            applyVoiceListeningState(false);
+    private void handleFaceTrackDiagnostics(RobbieFaceTrackDiagnostics diagnostics) {
+        if (diagnostics == null) {
             return;
         }
-        List<Person> faces = getVisibleFaces();
-        Person best = findBestVisiblePerson(faces);
-        applyVoiceListeningState(best != null);
-        if (best == null) {
-            if (isFollowing && !hasRecentVisiblePerson()) {
-                stopCurrentFocusFollow();
-            }
-            return;
-        }
-        if (isFollowing && currentFollowId >= 0 && !containsPersonId(faces, currentFollowId)) {
-            stopCurrentFocusFollow();
-            mainHandler.postDelayed(this::tryFollowVisiblePerson, FACE_REACQUIRE_DELAY_MS);
-            return;
-        }
-        if (!isFollowing) {
-            doStartFocusFollow(best.getId());
-        }
+        lastFaceTrackDiagnostics = diagnostics;
+        RobbieFaceTrackSnapshot snapshot = diagnostics.getSnapshot();
+        boolean seesPersonNow = hasVisibleTrackedPerson(diagnostics, snapshot);
+        syncVoiceListeningState(snapshot, seesPersonNow);
+        logFaceTrackOwnership(diagnostics);
     }
 
-    private void scheduleFaceTrackingWatchdog() {
-        cancelFaceTrackingWatchdog();
-        if (faceTrackingWatchdogRunnable == null) {
-            faceTrackingWatchdogRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    if (!faceTrackActive) {
-                        return;
-                    }
-                    pollFaceTrackingState();
-                    mainHandler.postDelayed(this, FACE_TRACK_WATCHDOG_INTERVAL_MS);
-                }
-            };
-        }
-        mainHandler.postDelayed(faceTrackingWatchdogRunnable, FACE_TRACK_WATCHDOG_INTERVAL_MS);
-    }
-
-    private void cancelFaceTrackingWatchdog() {
-        if (faceTrackingWatchdogRunnable != null) {
-            mainHandler.removeCallbacks(faceTrackingWatchdogRunnable);
-        }
-    }
-
-    private List<Person> getVisibleFaces() {
-        try {
-            List<Person> faces = PersonApi.getInstance().getCompleteFaceList();
-            if (faces == null || faces.isEmpty()) {
-                faces = PersonApi.getInstance().getAllFaceList(FACE_DETECTION_RANGE_METERS);
-            }
-            return faces != null ? faces : new ArrayList<>();
-        } catch (Exception e) {
-            Log.w(TAG, "getVisibleFaces error", e);
-            return new ArrayList<>();
-        }
-    }
-
-    private Person findBestVisiblePerson(List<Person> faces) {
-        if (faces == null || faces.isEmpty()) {
-            return null;
-        }
-        Person best = null;
-        for (Person person : faces) {
-            if (person == null || person.getId() < 0) {
-                continue;
-            }
-            if (best == null) {
-                best = person;
-                continue;
-            }
-            double bestDistance = best.getDistance();
-            double candidateDistance = person.getDistance();
-            boolean candidateValid = candidateDistance > 0;
-            boolean bestValid = bestDistance > 0;
-            if (candidateValid && (!bestValid || candidateDistance < bestDistance)) {
-                best = person;
-            }
-        }
-        return best;
-    }
-
-    private boolean containsPersonId(List<Person> faces, int personId) {
-        if (faces == null || personId < 0) {
+    private boolean hasVisibleTrackedPerson(RobbieFaceTrackDiagnostics diagnostics, RobbieFaceTrackSnapshot snapshot) {
+        if (diagnostics.getLatestFrame().getStale()) {
             return false;
         }
-        for (Person face : faces) {
-            if (face != null && face.getId() == personId) {
-                return true;
+        Integer activeTargetId = snapshot.getActiveTargetId();
+        List<TrackedPerson> persons = diagnostics.getLatestFrame().getPersons();
+        if (activeTargetId != null) {
+            for (TrackedPerson person : persons) {
+                if (person != null && person.getId() == activeTargetId.intValue()) {
+                    return true;
+                }
             }
         }
-        return false;
+        return !persons.isEmpty();
     }
 
-    private void handleFocusFollowLost(int requestId) {
-        if (currentFollowReqId != requestId) {
-            return;
-        }
-        Log.i(TAG, "FocusFollow: target lost, stopping and retrying");
-        stopCurrentFocusFollow();
-        if (faceTrackActive) {
-            mainHandler.postDelayed(this::pollFaceTrackingState, FACE_REACQUIRE_DELAY_MS);
-        }
-    }
-
-    private void stopCurrentFocusFollow() {
-        int stopReqId = currentFollowReqId;
-        clearCurrentFollowState();
-        if (!robotApiConnected || robotApi == null || stopReqId < 0) {
-            return;
-        }
-        try {
-            robotApi.stopFocusFollow(stopReqId);
-        } catch (Exception e) {
-            Log.w(TAG, "Could not stop current focus follow", e);
-        }
-    }
-
-    private void clearCurrentFollowState() {
-        isFollowing = false;
-        currentFollowId = -1;
-        currentFollowReqId = -1;
-    }
-
-    private boolean hasRecentVisiblePerson() {
-        return lastVisiblePersonAtMs > 0L && (SystemClock.elapsedRealtime() - lastVisiblePersonAtMs) <= FACE_VISIBILITY_GRACE_MS;
-    }
-
-    private void applyVoiceListeningState(boolean seesPersonNow) {
-        long now = SystemClock.elapsedRealtime();
+    private void syncVoiceListeningState(RobbieFaceTrackSnapshot snapshot, boolean seesPersonNow) {
+        long now = android.os.SystemClock.elapsedRealtime();
         if (seesPersonNow) {
             lastVisiblePersonAtMs = now;
         }
-        boolean shouldListen = faceTrackActive && robotApiConnected && (seesPersonNow || hasRecentVisiblePerson());
+        boolean managerOwnsTracking = faceTrackActive && snapshot.getEnabled();
+        boolean shouldListen = managerOwnsTracking && snapshot.getRobotApiConnected() && (seesPersonNow || hasRecentVisiblePerson(now));
+        updateVoiceListeningState(shouldListen, seesPersonNow, "manager:" + snapshot.getState().name() + ":" + snapshot.getLastDecisionReason());
+    }
+
+    private void logFaceTrackOwnership(RobbieFaceTrackDiagnostics diagnostics) {
+        RobbieFaceTrackSnapshot snapshot = diagnostics.getSnapshot();
+        if (lastLoggedFaceTrackState != snapshot.getState()) {
+            Log.i(
+                TAG,
+                "Face tracking manager state=" + snapshot.getState()
+                    + " reason=" + snapshot.getLastDecisionReason()
+                    + " owner=RobbieFaceTrackManager"
+            );
+            lastLoggedFaceTrackState = snapshot.getState();
+        }
+        Integer activeTargetId = snapshot.getActiveTargetId();
+        if ((lastLoggedTargetId == null && activeTargetId != null)
+            || (lastLoggedTargetId != null && !lastLoggedTargetId.equals(activeTargetId))) {
+            Log.i(
+                TAG,
+                "Face tracking target changed. activeTarget=" + activeTargetId
+                    + " candidateTarget=" + snapshot.getCandidateTargetId()
+                    + " score=" + snapshot.getLastSelectionScore()
+            );
+            lastLoggedTargetId = activeTargetId;
+        }
+        if (lastLoggedFollowing != snapshot.getFollowing()) {
+            Log.i(
+                TAG,
+                "Face tracking follow state=" + snapshot.getFollowing()
+                    + " requestId=" + snapshot.getFollowRequestId()
+                    + " lastError=" + snapshot.getLastErrorMessage()
+            );
+            lastLoggedFollowing = snapshot.getFollowing();
+        }
+    }
+
+    private boolean hasRecentVisiblePerson(long now) {
+        return lastVisiblePersonAtMs > 0L && (now - lastVisiblePersonAtMs) <= FACE_VISIBILITY_GRACE_MS;
+    }
+
+    private void updateVoiceListeningState(boolean shouldListen, boolean seesPersonNow, String reason) {
         if (microphoneOpenForVisiblePerson == shouldListen && lastReportedVisiblePerson == seesPersonNow) {
             return;
         }
@@ -1183,64 +969,15 @@ public class RobotActionHandler {
         if (agentBridge != null) {
             agentBridge.setVisionListeningState(shouldListen, seesPersonNow);
         }
-        Log.d(TAG, "Voice gate updated. shouldListen=" + shouldListen);
+        Log.d(TAG, "Voice gate updated. shouldListen=" + shouldListen + " visible=" + seesPersonNow + " reason=" + reason);
     }
 
     // ==================== Context Upload ====================
 
     public void uploadCatalogInfoToAgent() {
-        StringBuilder info = new StringBuilder();
-
-        if (!mapPlaces.isEmpty()) {
-            info.append("UBICACIONES DISPONIBLES EN LA TIENDA (el robot puede navegar a estos puntos):\n");
-            for (String place : mapPlaces) {
-                info.append("- ").append(place).append("\n");
-            }
-            info.append("\nCuando el usuario pida ir a una seccion, usa la accion NAVIGATE_TO_LOCATION con el nombre exacto del punto.\n\n");
-        }
-
-        // Leer productos de Room DB (fuente primaria, gestionada por el panel)
-        List<ProductEntity> dbProducts = getProductsFromDb();
-        if (!dbProducts.isEmpty()) {
-            info.append("CATALOGO DE PRODUCTOS DISPONIBLES - ").append(dbProducts.size()).append(" productos:\n");
-            int max = Math.min(dbProducts.size(), 30);
-            for (int i = 0; i < max; i++) {
-                ProductEntity p = dbProducts.get(i);
-                info.append("- ").append(p.getName());
-                if (p.getPrice() > 0) {
-                    info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
-                }
-                info.append(" [").append(p.getCategory()).append("]");
-                if (p.getBrand() != null && !p.getBrand().isEmpty()) {
-                    info.append(" marca: ").append(p.getBrand());
-                }
-                if (!p.getInStock()) {
-                    info.append(" (AGOTADO)");
-                }
-                info.append("\n");
-            }
-            if (dbProducts.size() > max) {
-                info.append("... y ").append(dbProducts.size() - max).append(" productos mas disponibles.\n");
-            }
-            info.append("\nCuando el usuario pregunte por productos, usa la accion SEARCH_PRODUCTS para buscar en la base de datos.\n");
-        } else {
-            // Fallback: productos de RobbieConfig (API remota)
-            List<Product> products = getProducts();
-            if (!products.isEmpty()) {
-                info.append("Catalogo - ").append(products.size()).append(" productos:\n");
-                int max = Math.min(products.size(), 20);
-                for (int i = 0; i < max; i++) {
-                    Product p = products.get(i);
-                    info.append("- ").append(p.getName())
-                        .append(" ($").append(String.format("%.0f", p.getPrice())).append(")")
-                        .append(" [").append(p.getCategory()).append("]\n");
-                }
-            }
-        }
-
-        if (info.length() > 0 && agentBridge != null) {
-            agentBridge.uploadInterfaceInfo(info.toString());
-            Log.d(TAG, "Interface info uploaded: " + mapPlaces.size() + " places, " + dbProducts.size() + " db products");
+        if (agentBridge != null) {
+            agentBridge.uploadInterfaceInfo("");
+            Log.d(TAG, "Interface info reset to lightweight empty state");
         }
     }
 
@@ -1262,7 +999,6 @@ public class RobotActionHandler {
                             }
                         }
                         Log.i(TAG, "Map places loaded: " + mapPlaces.size() + " -> " + mapPlaces);
-                        mainHandler.post(() -> uploadCatalogInfoToAgent());
                     } catch (Exception e) {
                         Log.e(TAG, "Error parsing place list", e);
                     }
@@ -1277,13 +1013,24 @@ public class RobotActionHandler {
 
     private List<ProductEntity> getProductsFromDb() {
         try {
-            RobbieDatabase db = RobbieDatabase.getInstance(context);
-            List<ProductEntity> products = db.productDao().getAllProductsSync();
-            return products != null ? products : new ArrayList<>();
+            return ProductCatalogCache.getInstance(context).getSnapshot();
         } catch (Exception e) {
             Log.w(TAG, "Error getting products from DB", e);
         }
         return new ArrayList<>();
+    }
+
+    private List<ProductEntity> filterProductsByCategory(List<ProductEntity> allProducts, String category) {
+        List<ProductEntity> matches = new ArrayList<>();
+        String categoryLower = category.toLowerCase();
+        for (ProductEntity product : allProducts) {
+            String productCategory = product.getCategory() != null ? product.getCategory().toLowerCase() : "";
+            String productName = product.getName() != null ? product.getName().toLowerCase() : "";
+            if (productCategory.contains(categoryLower) || productName.contains(categoryLower)) {
+                matches.add(product);
+            }
+        }
+        return matches;
     }
 
     private List<Product> getProducts() {
@@ -1431,11 +1178,25 @@ public class RobotActionHandler {
         return isChargingMode;
     }
 
+    public RobbieFaceTrackSnapshot getFaceTrackSnapshot() {
+        return faceTrackManager.currentSnapshot();
+    }
+
+    public RobbieFaceTrackMetrics getFaceTrackMetrics() {
+        return faceTrackManager.currentMetrics();
+    }
+
+    public RobbieFaceTrackDiagnostics getFaceTrackDiagnostics() {
+        return lastFaceTrackDiagnostics != null ? lastFaceTrackDiagnostics : faceTrackManager.currentDiagnostics();
+    }
+
     public void destroy() {
         chargingStateManager.removeListener(chargingStateListener);
         robotApiService.removeConnectionListener(robotApiConnectionListener);
         stopBatteryMonitor();
         stopFaceTracking();
+        faceTrackManager.removeListener(faceTrackDiagnosticsListener);
+        robotApiService.stopVisionSdkProbe();
         robotApiService.release(SERVICE_OWNER);
         robotServicesStarted = false;
     }

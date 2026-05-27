@@ -120,7 +120,7 @@ public class KnowledgeDocumentHandler extends BaseHandler {
                 }
             }
 
-            // Si es un archivo de texto, subimos su contenido a AgentCore para el RAG local
+            // Si es un archivo de texto, solo lo persistimos localmente.
             if (originalFileName.toLowerCase().endsWith(".txt")) {
                 try {
                     StringBuilder text = new StringBuilder();
@@ -133,12 +133,10 @@ public class KnowledgeDocumentHandler extends BaseHandler {
                         }
                     }
                     if (text.length() > 0) {
-                        com.ainirobot.agent.AgentCore.INSTANCE.uploadInterfaceInfo(
-                                "Base de conocimiento adicional para respuestas de la empresa:\n" + text.toString());
-                        Log.i(TAG, "Document uploaded and injected into AgentCore context.");
+                        Log.i(TAG, "Text document saved locally for future processing: " + originalFileName);
                     }
                 } catch (Exception ex) {
-                    Log.e(TAG, "Failed to ingest text into AgentCore", ex);
+                    Log.e(TAG, "Failed to process saved text document", ex);
                 }
             }
 

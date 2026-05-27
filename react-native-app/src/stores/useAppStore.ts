@@ -82,6 +82,7 @@ interface AppState {
   startNavigation: (destination: string, estimatedTime?: number, distance?: number) => void;
   setSearchRecommendation: (recommendation: string) => void;
   setSearchResults: (results: Product[]) => void;
+  applyRetailSearchPayload: (payload: { results: Product[]; query: string; recommendation: string; mode?: string }) => void;
   setProducts: (products: Product[]) => void;
   setProductsLoaded: (loaded: boolean) => void;
   setSceneProject: (project: SceneProject | null) => void;
@@ -131,6 +132,12 @@ export const useAppStore = create<AppState>((set) => ({
   }),
   setSearchRecommendation: (recommendation) => set({ searchRecommendation: recommendation }),
   setSearchResults: (results) => set({ searchResults: results }),
+  applyRetailSearchPayload: ({ results, query, recommendation, mode = 'retail' }) => set({
+    searchResults: results,
+    searchQuery: query,
+    searchRecommendation: recommendation,
+    currentMode: mode,
+  }),
   setProducts: (products) => set({ products, productsLoaded: true }),
   setProductsLoaded: (loaded) => set({ productsLoaded: loaded }),
   setSceneProject: (project) => set({ sceneProject: project, sceneProjectLoaded: true }),

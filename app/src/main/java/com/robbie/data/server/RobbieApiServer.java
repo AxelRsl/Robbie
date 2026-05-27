@@ -10,6 +10,7 @@ import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.entity.ProductEntity;
 import com.robbie.RobotApp;
 import com.ainirobot.agent.AgentCore;
+import com.robbie.platform.retail.ProductCatalogCache;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -69,26 +70,13 @@ public class RobbieApiServer extends NanoHTTPD {
         if (productHandler == null) {
             productHandler = new ProductHandler(db, gson);
             productHandler.setOnProductsChangedListener(() -> {
-                // Cuando los productos cambian via la API, actualizar contexto del agente
+                // Cuando los productos cambian via la API, refrescar cache local
                 try {
-                    List<ProductEntity> products = db.productDao().getAllProductsSync();
-                    if (products != null && !products.isEmpty()) {
-                        StringBuilder info = new StringBuilder();
-                        info.append("CATALOGO DE PRODUCTOS ACTUALIZADO - ").append(products.size()).append(" productos:\n");
-                        for (ProductEntity p : products) {
-                            info.append("- ").append(p.getName());
-                            if (p.getPrice() > 0)
-                                info.append(" ($").append(String.format("%.0f", p.getPrice())).append(")");
-                            info.append(" [").append(p.getCategory()).append("]");
-                            if (p.getBrand() != null && !p.getBrand().isEmpty())
-                                info.append(" marca: ").append(p.getBrand());
-                            info.append("\n");
-                        }
-                        AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
-                        Log.i(TAG, "Agent context updated with " + products.size() + " products from DB");
-                    }
+                    ProductCatalogCache cache = ProductCatalogCache.getInstance(context);
+                    List<ProductEntity> products = cache.refreshNow();
+                    Log.i(TAG, "Product catalog cache refreshed from DB change: " + (products != null ? products.size() : 0) + " products");
                 } catch (Exception e) {
-                    Log.w(TAG, "Could not update agent context after product change", e);
+                    Log.w(TAG, "Could not refresh product cache after product change", e);
                 }
             });
             mapHandler = new MapHandler(db, gson);

@@ -71,19 +71,22 @@ public class RobbieRetailActivity extends EveActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        
-        // Subir info de catalogo al Agent para contexto
-        uploadCatalogInfoToAgent();
-        
-        // Configurar wake-free (mic se abre cuando detecta cara)
+        // PageAgent(activity) auto-manages lifecycle; no manual begin() needed
         AgentCore.INSTANCE.enableWakeupMode(false);
         AgentCore.INSTANCE.setEnableWakeFree(true);
-        
         Log.d(TAG, "Wake-free activado - mic se abre al detectar cara");
     }
 
     @Override
+    protected void onStop() {
+        // PageAgent(activity) auto-manages lifecycle; no manual end() needed
+        super.onStop();
+    }
+
+    @Override
     protected void onDestroy() {
+        // PageAgent(activity) auto-manages lifecycle; no manual destroy() needed
+        pageAgent = null;
         AgentCore.INSTANCE.stopTTS();
         AgentCore.INSTANCE.clearContext();
         super.onDestroy();
@@ -289,31 +292,8 @@ public class RobbieRetailActivity extends EveActivity {
      * Ahora carga productos desde la base de datos local.
      */
     private void uploadCatalogInfoToAgent() {
-        // Cargar productos desde la base de datos local en un hilo de fondo
-        new Thread(() -> {
-            try {
-                RobbieDatabase db = RobbieDatabase.getInstance(this);
-                List<ProductEntity> products = db.productDao().getAllProductsBlocking();
-                
-                if (products == null || products.isEmpty()) {
-                    Log.w(TAG, "No hay productos en la base de datos local");
-                    return;
-                }
-                
-                StringBuilder info = new StringBuilder("Catalogo GNC - " + products.size() + " productos:\n");
-                
-                for (ProductEntity p : products) {
-                    info.append("- ").append(p.getName())
-                        .append(" ($").append(String.format("%.2f", p.getPrice())).append(")")
-                        .append(" [").append(p.getCategory()).append("]\n");
-                }
-                
-                AgentCore.INSTANCE.uploadInterfaceInfo(info.toString());
-                Log.i(TAG, "Catalogo subido al Agent: " + products.size() + " productos desde DB local");
-            } catch (Exception e) {
-                Log.e(TAG, "Error cargando productos desde DB local", e);
-            }
-        }).start();
+        AgentCore.INSTANCE.uploadInterfaceInfo("");
+        Log.d(TAG, "Retail interface info reset to empty state");
     }
 
     /**

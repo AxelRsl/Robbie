@@ -455,7 +455,7 @@ export default function FaceOverlayWebView() {
     || charging.isNavigatingToCharger
     || charging.status === 'charge_obstacle';
   const shouldHideForPresence = agent.personVisible;
-  const shouldHideForAgentState = agent.status === 'thinking' || agent.status === 'processing';
+  const shouldHideForAgentState = agent.status === 'listening' || agent.status === 'thinking' || agent.status === 'processing';
   const shouldForceHideFace = !isChargingMode && (shouldHideForPresence || shouldHideForAgentState);
   const [visible, setVisible] = useState(shouldShowIdleFace);
   const [emotion, setEmotion] = useState('idle');
@@ -580,29 +580,7 @@ export default function FaceOverlayWebView() {
       return;
     }
 
-    let nextEmotion: string | null = null;
-    if (agent.status === 'listening' && agent.gateOpen && !agent.personVisible) {
-      nextEmotion = 'listening';
-    } else if (agent.status === 'reset_status') {
-      nextEmotion = null;
-    }
-
     clearIdleResumeTimeout();
-
-    if (nextEmotion) {
-      lastAgentEmotionRef.current = nextEmotion;
-      setEmotion(nextEmotion);
-      setVisible(true);
-      return;
-    }
-
-    if (lastAgentEmotionRef.current !== null) {
-      lastAgentEmotionRef.current = null;
-      setEmotion('idle');
-      setVisible(false);
-      startIdleCooldown();
-      return;
-    }
 
     setEmotion('idle');
 

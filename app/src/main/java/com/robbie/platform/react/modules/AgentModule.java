@@ -106,6 +106,102 @@ public class AgentModule extends ReactContextBaseJavaModule {
         }
     }
 
+    @ReactMethod
+    public void setRecognizable(boolean enabled, Promise promise) {
+        try {
+            AgentCore.INSTANCE.setMicrophoneMuted(!enabled);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setRecognizable", e);
+            promise.reject("SPEECH_RECOGNIZABLE_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setRecognizeMode(boolean enabled, Promise promise) {
+        try {
+            AgentCore.INSTANCE.setEnableWakeFree(enabled);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setRecognizeMode", e);
+            promise.reject("SPEECH_RECOGNIZE_MODE_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setRecognizeModeForce(boolean enabled, Promise promise) {
+        try {
+            AgentCore.INSTANCE.enableWakeupMode(enabled);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setRecognizeModeForce", e);
+            promise.reject("SPEECH_RECOGNIZE_MODE_FORCE_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setRecognizeModeNew(boolean enabled, boolean closeStreamData, Promise promise) {
+        try {
+            AgentCore.INSTANCE.setEnableWakeFree(enabled);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setRecognizeModeNew", e);
+            promise.reject("SPEECH_RECOGNIZE_MODE_NEW_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setASREnabled(boolean enabled, Promise promise) {
+        try {
+            AgentCore.INSTANCE.setMicrophoneMuted(!enabled);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setASREnabled", e);
+            promise.reject("SPEECH_ASR_ENABLED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setASRParams(String key, String value, Promise promise) {
+        try {
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setASRParams", e);
+            promise.reject("SPEECH_ASR_PARAMS_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setAsrExtendProperty(String property, Promise promise) {
+        try {
+            promise.resolve(false);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setAsrExtendProperty", e);
+            promise.reject("SPEECH_ASR_EXTEND_PROPERTY_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void setAngleCenterRange(double center, double range, Promise promise) {
+        try {
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en setAngleCenterRange", e);
+            promise.reject("SPEECH_ANGLE_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void queryByText(String text, Promise promise) {
+        try {
+            AgentCore.INSTANCE.query(text);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error en queryByText", e);
+            promise.reject("QUERY_BY_TEXT_ERROR", e.getMessage());
+        }
+    }
+
     /**
      * Sube informacion de la pantalla actual para que el LLM la entienda.
      * Doc: AgentCore.uploadInterfaceInfo(info)

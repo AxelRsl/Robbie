@@ -69,7 +69,7 @@ public class EveActivity extends ReactActivity {
 
         agentBridge.initialize(
             this,
-            (actionName, params) -> actionHandler.handleAction(actionName, params),
+            (actionName, params, completionCallback) -> actionHandler.handleAction(actionName, params, completionCallback),
             createTranscriptionCallback()
         );
 
@@ -78,6 +78,7 @@ public class EveActivity extends ReactActivity {
 
         // Register activity with animation manager so it can reveal the system face
         actionHandler.registerActivityForFaceReveal(this);
+
     }
 
     @Override
@@ -94,6 +95,7 @@ public class EveActivity extends ReactActivity {
     protected void onStop() {
         super.onStop();
         actionHandler.stopFaceTracking();
+        agentBridge.onActivityStop();
     }
 
     @Override
@@ -279,6 +281,7 @@ public class EveActivity extends ReactActivity {
         try {
             WritableMap params = Arguments.createMap();
             params.putString("query", query);
+            params.putDouble("emittedAtMs", System.currentTimeMillis());
 
             WritableArray productsArray = Arguments.createArray();
             for (Product product : products) {
@@ -312,6 +315,7 @@ public class EveActivity extends ReactActivity {
             params.putString("query", query);
             params.putString("recommendation", recommendation);
             params.putInt("totalResults", products.size());
+            params.putDouble("emittedAtMs", System.currentTimeMillis());
 
             WritableArray productsArray = Arguments.createArray();
             for (ProductEntity product : products) {
@@ -324,7 +328,6 @@ public class EveActivity extends ReactActivity {
                 productMap.putString("imageUrl", product.getImage());
                 productMap.putString("description", product.getDescription());
                 boolean inStockValue = product.getInStock();
-                Log.d(TAG, "Sending product " + product.getName() + " inStock=" + inStockValue);
                 productMap.putBoolean("inStock", inStockValue);
                 double finalPrice = product.getPrice() * (1 - product.getDiscount() / 100.0);
                 productMap.putDouble("finalPrice", finalPrice);
@@ -345,6 +348,7 @@ public class EveActivity extends ReactActivity {
         try {
             WritableMap params = Arguments.createMap();
             params.putString("explanation", explanation);
+            params.putDouble("emittedAtMs", System.currentTimeMillis());
             
             // Enviar array completo de productos con flag aiRecommended
             WritableArray productsArray = Arguments.createArray();

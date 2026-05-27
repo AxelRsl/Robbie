@@ -31,7 +31,12 @@ public interface IAgentBridge {
      * Listener para cuando el agente despacha una accion.
      */
     interface ActionDispatchCallback {
-        void onActionDispatched(String actionName, android.os.Bundle params);
+        void onActionDispatched(String actionName, android.os.Bundle params, ActionCompletionCallback completionCallback);
+    }
+
+    interface ActionCompletionCallback {
+        void onSuccess();
+        void onFailure(String message);
     }
 
     /**

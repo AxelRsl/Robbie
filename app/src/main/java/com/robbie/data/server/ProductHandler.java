@@ -10,7 +10,9 @@ import com.robbie.data.local.entity.ProductEntity;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -112,22 +114,46 @@ public class ProductHandler extends BaseHandler {
         Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
         Map<String, Object> json = gson.fromJson(body, mapType);
 
-        existing.setName(getStringOrDefault(json, "name", existing.getName()));
-        existing.setCategory(getStringOrDefault(json, "category", existing.getCategory()));
-        existing.setSubcategory(getStringOrDefault(json, "subcategory", existing.getSubcategory()));
-        existing.setPrice(getDoubleOrDefault(json, "price", existing.getPrice()));
-        existing.setDiscount(getIntOrDefault(json, "discount", existing.getDiscount()));
-        existing.setImage(getStringOrDefault(json, "image", existing.getImage()));
-        existing.setDescription(getStringOrDefault(json, "description", existing.getDescription()));
-        existing.setIngredients(getStringOrDefault(json, "ingredients", existing.getIngredients()));
-        if (json.containsKey("tags")) {
-            existing.setTags(getStringListOrDefault(json, "tags"));
+        ProductEntity incoming = buildProduct(json);
+
+        if (hasAnyKey(json, "name", "productName")) {
+            existing.setName(incoming.getName());
         }
-        if (json.containsKey("inStock")) {
-            existing.setInStock(getBooleanOrDefault(json, "inStock", existing.getInStock()));
+        if (hasAnyKey(json, "category", "mainCategory")) {
+            existing.setCategory(incoming.getCategory());
         }
-        existing.setSku(getStringOrDefault(json, "sku", existing.getSku()));
-        existing.setBrand(getStringOrDefault(json, "brand", existing.getBrand()));
+        if (hasAnyKey(json, "subcategory", "subCategory", "thirdCategory")) {
+            existing.setSubcategory(incoming.getSubcategory());
+        }
+        if (hasAnyKey(json, "price", "currentPrice")) {
+            existing.setPrice(incoming.getPrice());
+        }
+        if (hasAnyKey(json, "discount", "discountInfo", "originalPrice", "currentPrice")) {
+            existing.setDiscount(incoming.getDiscount());
+        }
+        if (hasAnyKey(json, "image", "imageUrl1", "imageUrl2")) {
+            existing.setImage(incoming.getImage());
+        }
+        if (hasAnyKey(json, "description", "mainCategory", "subCategory", "thirdCategory", "brand", "stockStatus", "discountInfo",
+            "attribute-1(eg:capacity)", "attribute-2(eg:color)", "attribute-3(eg:screenResolution)", "attribute-4(eg:weight)", "attribute-5(eg:size)")) {
+            existing.setDescription(incoming.getDescription());
+        }
+        if (hasAnyKey(json, "ingredients", "attribute-1(eg:capacity)", "attribute-2(eg:color)", "attribute-3(eg:screenResolution)", "attribute-4(eg:weight)", "attribute-5(eg:size)")) {
+            existing.setIngredients(incoming.getIngredients());
+        }
+        if (hasAnyKey(json, "tags", "mainCategory", "subCategory", "thirdCategory", "brand", "stockStatus", "discountInfo",
+            "attribute-1(eg:capacity)", "attribute-2(eg:color)", "attribute-3(eg:screenResolution)", "attribute-4(eg:weight)", "attribute-5(eg:size)")) {
+            existing.setTags(incoming.getTags());
+        }
+        if (hasAnyKey(json, "inStock", "stockStatus")) {
+            existing.setInStock(incoming.getInStock());
+        }
+        if (hasAnyKey(json, "sku", "productID")) {
+            existing.setSku(incoming.getSku());
+        }
+        if (hasAnyKey(json, "brand")) {
+            existing.setBrand(incoming.getBrand());
+        }
         existing.setUpdatedAt(System.currentTimeMillis());
 
         db.productDao().updateProduct(existing);
@@ -185,19 +211,247 @@ public class ProductHandler extends BaseHandler {
 
     private ProductEntity buildProduct(Map<String, Object> json) {
         ProductEntity product = new ProductEntity();
-        product.setId(getStringOrDefault(json, "id", UUID.randomUUID().toString()));
-        product.setName(getStringOrDefault(json, "name", ""));
-        product.setCategory(getStringOrDefault(json, "category", ""));
-        product.setSubcategory(getStringOrDefault(json, "subcategory", ""));
-        product.setPrice(getDoubleOrDefault(json, "price", 0.0));
-        product.setDiscount(getIntOrDefault(json, "discount", 0));
-        product.setImage(getStringOrDefault(json, "image", ""));
-        product.setDescription(getStringOrDefault(json, "description", ""));
-        product.setIngredients(getStringOrDefault(json, "ingredients", ""));
-        product.setTags(getStringListOrDefault(json, "tags"));
-        product.setInStock(getBooleanOrDefault(json, "inStock", true));
-        product.setSku(getStringOrDefault(json, "sku", ""));
-        product.setBrand(getStringOrDefault(json, "brand", ""));
+        String productId = firstString(json, "id", "productID");
+        String name = firstString(json, "name", "productName");
+        String category = firstString(json, "category", "mainCategory");
+        String subcategory = firstString(json, "subcategory", "subCategory", "thirdCategory");
+        String thirdCategory = firstString(json, "thirdCategory");
+        double currentPrice = firstDouble(json, "price", "currentPrice");
+        double originalPrice = firstDouble(json, "originalPrice");
+        String discountInfo = firstString(json, "discountInfo");
+        String brand = firstString(json, "brand");
+        String stockStatus = firstString(json, "stockStatus");
+        String image = firstString(json, "image", "imageUrl1", "imageUrl2", "imageUrl3");
+        String description = firstString(json, "description");
+        String ingredients = firstString(json, "ingredients");
+        List<String> tags = buildStructuredTags(json, category, subcategory, thirdCategory, brand, stockStatus, discountInfo);
+
+        if (description.isEmpty()) {
+            description = buildStructuredDescription(category, subcategory, thirdCategory, brand, stockStatus, discountInfo, json);
+        }
+        if (ingredients.isEmpty()) {
+            ingredients = buildAttributeSummary(json);
+        }
+
+        product.setId(productId.isEmpty() ? UUID.randomUUID().toString() : productId);
+        product.setName(name);
+        product.setCategory(category);
+        product.setSubcategory(subcategory);
+        product.setPrice(currentPrice);
+        product.setDiscount(resolveDiscount(json, currentPrice, originalPrice, discountInfo));
+        product.setImage(image);
+        product.setDescription(description);
+        product.setIngredients(ingredients);
+        product.setTags(tags);
+        product.setInStock(resolveInStock(json, stockStatus));
+        product.setSku(firstString(json, "sku", "productID"));
+        product.setBrand(brand);
         return product;
+    }
+
+    private boolean hasAnyKey(Map<String, Object> json, String... keys) {
+        for (String key : keys) {
+            if (json.containsKey(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String firstString(Map<String, Object> json, String... keys) {
+        for (String key : keys) {
+            Object value = json.get(key);
+            if (value == null) {
+                continue;
+            }
+            String stringValue = String.valueOf(value).trim();
+            if (!stringValue.isEmpty() && !"null".equalsIgnoreCase(stringValue)) {
+                return stringValue;
+            }
+        }
+        return "";
+    }
+
+    private double firstDouble(Map<String, Object> json, String... keys) {
+        for (String key : keys) {
+            Object value = json.get(key);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            }
+            if (value instanceof String) {
+                String text = ((String) value).trim().replace(",", "");
+                if (text.isEmpty()) {
+                    continue;
+                }
+                try {
+                    return Double.parseDouble(text);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return 0.0;
+    }
+
+    private boolean resolveInStock(Map<String, Object> json, String stockStatus) {
+        if (json.containsKey("inStock")) {
+            return getBooleanOrDefault(json, "inStock", true);
+        }
+        String normalized = normalize(stockStatus);
+        if (normalized.isEmpty()) {
+            return true;
+        }
+        return normalized.contains("in stock") || normalized.contains("available") || normalized.contains("disponible");
+    }
+
+    private int resolveDiscount(Map<String, Object> json, double currentPrice, double originalPrice, String discountInfo) {
+        if (json.containsKey("discount")) {
+            return getIntOrDefault(json, "discount", 0);
+        }
+        if (originalPrice > 0.0 && currentPrice > 0.0 && originalPrice > currentPrice) {
+            return (int) Math.round(((originalPrice - currentPrice) / originalPrice) * 100.0);
+        }
+        String normalized = normalize(discountInfo);
+        if (!normalized.isEmpty()) {
+            String digits = normalized.replaceAll("[^0-9]", " ").trim();
+            if (!digits.isEmpty()) {
+                String[] parts = digits.split("\\s+");
+                try {
+                    return Integer.parseInt(parts[0]);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return 0;
+    }
+
+    private List<String> buildStructuredTags(Map<String, Object> json,
+                                             String category,
+                                             String subcategory,
+                                             String thirdCategory,
+                                             String brand,
+                                             String stockStatus,
+                                             String discountInfo) {
+        LinkedHashSet<String> tags = new LinkedHashSet<>();
+        for (String tag : getStringListOrDefault(json, "tags")) {
+            addTag(tags, tag);
+        }
+
+        addTag(tags, category);
+        addTag(tags, subcategory);
+        addTag(tags, thirdCategory);
+        addTag(tags, brand);
+        addTag(tags, stockStatus);
+        addTag(tags, discountInfo);
+
+        String attributeSummary = buildAttributeSummary(json);
+        addTag(tags, attributeSummary);
+
+        String normalizedCategory = normalize(category);
+        String normalizedSubcategory = normalize(subcategory);
+        String normalizedThirdCategory = normalize(thirdCategory);
+
+        if (normalizedCategory.contains("alimentos y bebidas") || normalizedSubcategory.contains("snack")) {
+            addTag(tags, "snack");
+            addTag(tags, "snacks");
+            addTag(tags, "algo rapido");
+            addTag(tags, "portable");
+        }
+        if (normalizedSubcategory.contains("snack") || normalizedThirdCategory.contains("bar") || normalize(attributeSummary).contains("gramos")) {
+            addTag(tags, "barrita");
+            addTag(tags, "barra");
+            addTag(tags, "quick energy");
+        }
+        if (normalizedCategory.contains("proteina") || normalizedSubcategory.contains("whey")) {
+            addTag(tags, "proteina");
+            addTag(tags, "protein");
+            addTag(tags, "gym");
+            addTag(tags, "recovery");
+        }
+        if (normalizedThirdCategory.contains("shake")) {
+            addTag(tags, "shake");
+            addTag(tags, "bebida");
+        }
+        if (normalizedSubcategory.contains("movilidad")) {
+            addTag(tags, "articulaciones");
+            addTag(tags, "movilidad");
+        }
+        if (normalize(stockStatus).contains("in stock")) {
+            addTag(tags, "disponible");
+        }
+        if (!normalize(discountInfo).isEmpty()) {
+            addTag(tags, "oferta");
+            addTag(tags, "promocion");
+        }
+
+        return new ArrayList<>(tags);
+    }
+
+    private String buildStructuredDescription(String category,
+                                              String subcategory,
+                                              String thirdCategory,
+                                              String brand,
+                                              String stockStatus,
+                                              String discountInfo,
+                                              Map<String, Object> json) {
+        List<String> parts = new ArrayList<>();
+        if (!category.isEmpty()) {
+            parts.add(category);
+        }
+        if (!subcategory.isEmpty()) {
+            parts.add(subcategory);
+        }
+        if (!thirdCategory.isEmpty()) {
+            parts.add(thirdCategory);
+        }
+        if (!brand.isEmpty()) {
+            parts.add("Marca " + brand);
+        }
+
+        String attributeSummary = buildAttributeSummary(json);
+        if (!attributeSummary.isEmpty()) {
+            parts.add("Presentacion " + attributeSummary);
+        }
+        if (!discountInfo.isEmpty()) {
+            parts.add("Promocion " + discountInfo);
+        }
+        if (!stockStatus.isEmpty()) {
+            parts.add("Stock " + stockStatus);
+        }
+        return String.join(". ", parts);
+    }
+
+    private String buildAttributeSummary(Map<String, Object> json) {
+        String[] keys = {
+            "attribute-1(eg:capacity)",
+            "attribute-2(eg:color)",
+            "attribute-3(eg:screenResolution)",
+            "attribute-4(eg:weight)",
+            "attribute-5(eg:size)"
+        };
+        List<String> values = new ArrayList<>();
+        for (String key : keys) {
+            String value = firstString(json, key);
+            if (!value.isEmpty()) {
+                values.add(value);
+            }
+        }
+        return String.join(" ", values);
+    }
+
+    private void addTag(LinkedHashSet<String> tags, String value) {
+        if (value == null) {
+            return;
+        }
+        String trimmed = value.trim();
+        if (!trimmed.isEmpty()) {
+            tags.add(trimmed);
+        }
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 }

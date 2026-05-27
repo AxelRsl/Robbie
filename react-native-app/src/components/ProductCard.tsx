@@ -8,13 +8,11 @@ interface ProductCardProps {
   variant?: 'grid' | 'list';
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ 
+export const ProductCard: React.FC<ProductCardProps> = React.memo(({ 
   product, 
   onPress, 
   variant = 'grid' 
 }) => {
-  console.log('[ProductCard] Product:', product.name, 'inStock:', product.inStock, 'type:', typeof product.inStock, 'full product:', JSON.stringify(product));
-
   if (variant === 'list') {
     return (
       <TouchableOpacity 
@@ -71,7 +69,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       </View>
     </TouchableOpacity>
   );
-};
+});
+
+ProductCard.displayName = 'ProductCard';
 
 const styles = StyleSheet.create({
   gridContainer: {

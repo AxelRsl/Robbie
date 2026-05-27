@@ -1,13 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
   NativeModules,
-  DeviceEventEmitter,
 } from 'react-native';
 import { ProductCard } from '@/components/ProductCard';
 import { SearchBar } from '@/components/SearchBar';
@@ -25,12 +23,10 @@ import { Button } from '@/components/ui/Button';
 const { ProductSearchModule } = NativeModules;
 
 export const RetailScreen: React.FC = () => {
-  const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [currentSearchQuery, setCurrentSearchQuery] = useState<string>('');
-  const [searchCategory, setSearchCategory] = useState<string>('');
   const { theme } = useTheme();
   const styles = createStyles(theme);
+  const mountTimeRef = useRef(Date.now());
   
   const { 
     retailTemplate, 
@@ -38,70 +34,49 @@ export const RetailScreen: React.FC = () => {
     setSelectedProduct, 
     setCurrentMode, 
     uiConfig,
+    searchQuery,
     searchRecommendation,
     setSearchRecommendation,
+    setSearchQuery,
+    searchResults: storeSearchResults,
     setSearchResults: setStoreSearchResults,
     products,
     productsLoaded,
   } = useAppStore();
 
   useEffect(() => {
+    console.log(`[RetailScreen] mounted at ${mountTimeRef.current}`);
+  }, []);
+
+  const hasActiveSearch = storeSearchResults.length > 0 || !!searchRecommendation || !!searchQuery;
+
+  const searchCategory = useMemo(() => {
+    if (storeSearchResults.length === 0) {
+      return '';
+    }
+    const categories = [...new Set(storeSearchResults.map((p: Product) => p.category).filter(Boolean))];
+    return categories.join(', ') || '';
+  }, [storeSearchResults]);
+
+  const currentSearchQuery = searchQuery || '';
+
+  const displayProducts = useMemo(
+    () => (hasActiveSearch ? storeSearchResults : products),
+    [hasActiveSearch, products, storeSearchResults]
+  );
+
+  useEffect(() => {
+    console.log(`[RetailScreen] data ready after ${Date.now() - mountTimeRef.current}ms activeSearch=${hasActiveSearch} count=${displayProducts.length}`);
+  }, [displayProducts.length, hasActiveSearch]);
+
+  useEffect(() => {
     // Establecer color Ikalp sólido al cargar la pantalla
     LedHelper.setIkalpPrimary().catch(error => {
       console.warn('[RetailScreen] No se pudo establecer color Ikalp:', error);
     });
-    
-    // Escuchar eventos de búsqueda desde EveActivity (LLM)
-    const productSearchListener = DeviceEventEmitter.addListener('onProductSearch', (event) => {
-      console.log('[RetailScreen] Product search event from LLM:', event);
-      if (event.products && Array.isArray(event.products)) {
-        setSearchResults(event.products);
-        setStoreSearchResults(event.products);
-        
-        // Actualizar información de búsqueda
-        if (event.query) {
-          setCurrentSearchQuery(event.query);
-        }
-        if (event.category) {
-          setSearchCategory(event.category);
-        } else if (event.products.length > 0) {
-          // Inferir categoría del primer producto si no se proporciona
-          setSearchCategory(event.products[0].category || '');
-        }
-        
-        if (event.recommendation) {
-          setSearchRecommendation(event.recommendation);
-        }
-      }
-    });
-
-    // Escuchar eventos de recomendación desde EveActivity (LLM)
-    const productRecommendationListener = DeviceEventEmitter.addListener('onProductRecommendation', (event) => {
-      console.log('[RetailScreen] Product recommendation event from LLM:', event);
-      if (event.products && Array.isArray(event.products)) {
-        // Mostrar todos los productos con flag aiRecommended
-        setSearchResults(event.products);
-        setStoreSearchResults(event.products);
-        
-        // Actualizar información de recomendación
-        setCurrentSearchQuery('Recomendaciones AI');
-        if (event.products.length > 0) {
-          // Obtener categorías de productos recomendados
-          const categories = [...new Set(event.products
-            .filter((p: any) => p.aiRecommended)
-            .map((p: any) => p.category)
-            .filter(Boolean))];
-          setSearchCategory(categories.join(', ') || 'Varios');
-        }
-        
-        if (event.explanation) {
-          setSearchRecommendation(event.explanation);
-        }
-      }
-    });
 
     // Escuchar eventos de cambio de modo automático
-    const modeSwitchListener = DeviceEventEmitter.addListener('onModeSwitch', (event) => {
+    const modeSwitchListener = require('react-native').DeviceEventEmitter.addListener('onModeSwitch', (event: any) => {
       console.log('[RetailScreen] Mode switch event from LLM:', event);
       if (event.mode === 'retail' && event.autoSwitch) {
         console.log('[RetailScreen] Auto-switching to retail mode');
@@ -110,8 +85,6 @@ export const RetailScreen: React.FC = () => {
     });
 
     return () => {
-      productSearchListener.remove();
-      productRecommendationListener.remove();
       modeSwitchListener.remove();
     };
   }, []);
@@ -125,30 +98,14 @@ export const RetailScreen: React.FC = () => {
         const response = await ProductSearchModule.searchProducts(query);
         const results = response.products || [];
         console.log('[RetailScreen] Resultados de busqueda local:', results.length);
-        setSearchResults(results);
         setStoreSearchResults(results);
-        
-        // Actualizar información de búsqueda
-        setCurrentSearchQuery(query);
-        if (results.length > 0) {
-          const categories = [...new Set(results.map((p: Product) => p.category).filter(Boolean))];
-          setSearchCategory(categories.join(', ') || '');
-        }
         
         await RobotBridge.say(`Encontré ${results.length} productos relacionados con ${query}`);
       } else {
         // Fallback a CloudApi si el módulo no está disponible
         const results = await CloudApi.searchProducts(query);
         console.log('[RetailScreen] Resultados de busqueda CloudApi:', results.length);
-        setSearchResults(results);
         setStoreSearchResults(results);
-        
-        // Actualizar información de búsqueda
-        setCurrentSearchQuery(query);
-        if (results.length > 0) {
-          const categories = [...new Set(results.map((p: Product) => p.category).filter(Boolean))];
-          setSearchCategory(categories.join(', ') || '');
-        }
         
         await RobotBridge.say(`Encontré ${results.length} productos relacionados con ${query}`);
       }
@@ -181,7 +138,19 @@ export const RetailScreen: React.FC = () => {
     setRetailTemplate(retailTemplate === 'grid' ? 'list' : 'grid');
   };
 
-  const displayProducts = searchResults.length > 0 ? searchResults : products;
+  const handleClearSearch = useCallback(() => {
+    setStoreSearchResults([]);
+    setSearchRecommendation('');
+    setSearchQuery('');
+  }, [setSearchRecommendation, setSearchQuery, setStoreSearchResults]);
+
+  const handleRenderProduct = useCallback(({ item }: { item: Product }) => (
+    <ProductCard
+      product={item}
+      onPress={handleProductPress}
+      variant={retailTemplate}
+    />
+  ), [handleProductPress, retailTemplate]);
 
   if (!productsLoaded) {
     return (
@@ -224,21 +193,15 @@ export const RetailScreen: React.FC = () => {
               {searchCategory}
             </Text>
           ) : null}
-          {searchResults.length > 0 && (
+          {storeSearchResults.length > 0 && (
             <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, marginLeft: 8 }}>
-              {searchResults.length} resultados
+              {storeSearchResults.length} resultados
             </Text>
           )}
           <View style={{ flex: 1 }} />
-          {(currentSearchQuery || searchResults.length > 0) && (
+          {(currentSearchQuery || storeSearchResults.length > 0) && (
             <TouchableOpacity
-              onPress={() => {
-                setCurrentSearchQuery('');
-                setSearchCategory('');
-                setSearchResults([]);
-                setStoreSearchResults([]);
-                setSearchRecommendation('');
-              }}
+              onPress={handleClearSearch}
               activeOpacity={0.7}
             >
               <Icon name="close" size="sm" color={theme.colors.onSurfaceVariant} />
@@ -247,30 +210,30 @@ export const RetailScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Recomendacion minimalista */}
-      {searchRecommendation ? (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
-          <Text style={{ fontSize: 10, color: theme.colors.warning, fontWeight: '600' }} numberOfLines={2}>
-            {searchRecommendation}
+
+      {hasActiveSearch && !isSearching && displayProducts.length === 0 ? (
+        <View style={[styles.container, GlobalStyles.center, { paddingHorizontal: 24 }] }>
+          <Text style={[styles.body, { textAlign: 'center' }]}>{`No encontré productos para ${currentSearchQuery || 'tu búsqueda'}.`}</Text>
+          <Text style={[styles.body, { textAlign: 'center', marginTop: 8, color: theme.colors.onSurfaceVariant }]}>
+            Prueba con otro término como marca, categoría o beneficio.
           </Text>
         </View>
-      ) : null}
-
-      <FlatList
-        data={displayProducts}
-        keyExtractor={(item) => item.id}
-        numColumns={retailTemplate === 'grid' ? uiConfig.retailColumns : 1}
-        key={retailTemplate}
-        renderItem={({ item }) => (
-          <ProductCard 
-            product={item} 
-            onPress={handleProductPress}
-            variant={retailTemplate}
-          />
-        )}
-        contentContainerStyle={{ paddingBottom: 16, paddingHorizontal: 8 }}
-        showsVerticalScrollIndicator={false}
-      />
+      ) : (
+        <FlatList
+          data={displayProducts}
+          keyExtractor={(item) => item.id}
+          numColumns={retailTemplate === 'grid' ? uiConfig.retailColumns : 1}
+          key={retailTemplate}
+          renderItem={handleRenderProduct}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          updateCellsBatchingPeriod={16}
+          removeClippedSubviews={true}
+          contentContainerStyle={{ paddingBottom: 16, paddingHorizontal: 8 }}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 };

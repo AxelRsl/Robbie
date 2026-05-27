@@ -23,9 +23,6 @@ import com.robbie.core.hardware.LedController;
 import java.util.Arrays;
 import java.util.Collections;
 
-import com.ainirobot.coreservice.client.person.PersonApi;
-import com.ainirobot.coreservice.client.listener.Person;
-import java.util.List;
 
 /**
  * Implementacion del IAgentBridge para el Agent SDK de ainirobot.
@@ -49,8 +46,6 @@ public class RobbieAgentBridge implements IAgentBridge {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean isListeningLight = false;
     private final Runnable restoreDefaultLight = () -> LedController.getInstance().restoreDefault();
-    private volatile boolean visionGateOpen = false;
-    private volatile boolean personVisible = false;
     private volatile String lastAgentStatus = "reset_status";
     private volatile String lastAgentMessage = "";
 
@@ -91,19 +86,11 @@ public class RobbieAgentBridge implements IAgentBridge {
                     Log.d(TAG, "ASR final: " + text);
 
                     if (!text.isEmpty()) {
-                        if (!canProcessVoiceInput()) {
-                            Log.i(TAG, "Ignoring ASR final because no visible person is gated in front of robot");
-                            if (transcriptionCallback != null) {
-                                transcriptionCallback.onListeningGateChanged(false, personVisible);
-                            }
-                            return true;
-                        }
-                        Log.d(TAG, "Sending to query: " + text);
                         com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text);
-                        AgentCore.INSTANCE.query(text);
                         if (transcriptionCallback != null) transcriptionCallback.onASRFinal(text);
                     }
-                    return true;
+                    // Return false: let AgentOS handle voice bar display and LLM planning natively
+                    return false;
                 }
 
                 @Override
@@ -131,6 +118,11 @@ public class RobbieAgentBridge implements IAgentBridge {
                     Log.d(TAG, "Agent status changed: " + lastAgentStatus + " message=" + lastAgentMessage);
                     if (transcriptionCallback != null) {
                         transcriptionCallback.onAgentStatusChanged(lastAgentStatus, lastAgentMessage);
+                        // Derive gate state from AgentOS status — delegated to OrionStar
+                        boolean active = "listening".equals(lastAgentStatus)
+                            || "thinking".equals(lastAgentStatus)
+                            || "processing".equals(lastAgentStatus);
+                        transcriptionCallback.onListeningGateChanged(active, active);
                     }
                     return false;
                 }
@@ -154,13 +146,6 @@ public class RobbieAgentBridge implements IAgentBridge {
 
     @Override
     public void query(String text) {
-        if (!canProcessVoiceInput()) {
-            Log.i(TAG, "Ignoring external query because no visible person is gated in front of robot");
-            if (transcriptionCallback != null) {
-                transcriptionCallback.onListeningGateChanged(false, personVisible);
-            }
-            return;
-        }
         AgentCore.INSTANCE.query(text);
     }
 
@@ -181,11 +166,7 @@ public class RobbieAgentBridge implements IAgentBridge {
 
     @Override
     public void setVisionListeningState(boolean gateOpen, boolean personVisible) {
-        this.visionGateOpen = gateOpen;
-        this.personVisible = personVisible;
-        if (transcriptionCallback != null) {
-            transcriptionCallback.onListeningGateChanged(gateOpen, personVisible);
-        }
+        // No-op: gate state is now derived from AgentOS status in onStatusChanged
     }
 
     @Override
@@ -201,6 +182,14 @@ public class RobbieAgentBridge implements IAgentBridge {
     @Override
     public void destroy() {
         ready = false;
+        if (pageAgent != null) {
+            try {
+                pageAgent.destroy();
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to destroy PageAgent", e);
+            }
+            pageAgent = null;
+        }
         AgentCore.INSTANCE.stopTTS();
         AgentCore.INSTANCE.clearContext();
         mainHandler.removeCallbacks(restoreDefaultLight);
@@ -216,11 +205,23 @@ public class RobbieAgentBridge implements IAgentBridge {
      * Llamar desde onStart() de la Activity.
      */
     public void onActivityStart() {
+        if (pageAgent != null) {
+            try {
+                pageAgent.begin();
+                Log.d(TAG, "PageAgent.begin() called");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to begin PageAgent", e);
+            }
+        }
         AgentCore.INSTANCE.enableWakeupMode(false);
         AgentCore.INSTANCE.setEnableWakeFree(true);
         AgentCore.INSTANCE.setMicrophoneMuted(false);
         AgentCore.INSTANCE.setEnableVoiceBar(true);
         Log.d(TAG, "Wake mode: OFF, wake-free=ON, mic=OPEN, voiceBar=ON");
+    }
+
+    public void onActivityStop() {
+        // PageAgent(activity) auto-manages lifecycle; no manual end() needed
     }
 
     /**
@@ -234,21 +235,40 @@ public class RobbieAgentBridge implements IAgentBridge {
         }, 500);
     }
 
-    private boolean canProcessVoiceInput() {
-        return visionGateOpen && personVisible;
-    }
-
     // ==================== Registro de Actions ====================
 
     private ActionResult successResult() {
         return new ActionResult(ActionStatus.SUCCEEDED, null, null, "", "");
     }
 
+    private ActionResult failedResult(String message) {
+        return new ActionResult(ActionStatus.FAILED, null, null, message != null ? message : "", "");
+    }
+
+    private IAgentBridge.ActionCompletionCallback createNotifyCompletion(Action action) {
+        return new IAgentBridge.ActionCompletionCallback() {
+            private boolean completed;
+
+            @Override
+            public synchronized void onSuccess() {
+                if (completed) return;
+                completed = true;
+                action.notify(successResult(), false);
+            }
+
+            @Override
+            public synchronized void onFailure(String message) {
+                if (completed) return;
+                completed = true;
+                action.notify(failedResult(message), false);
+            }
+        };
+    }
+
     private void dispatchAction(String actionName, Action action, Bundle params) {
         if (actionCallback != null) {
-            actionCallback.onActionDispatched(actionName, params);
+            actionCallback.onActionDispatched(actionName, params, createNotifyCompletion(action));
         }
-        action.notify(successResult(), false);
     }
 
     private void registerEmotionActions() {
@@ -312,9 +332,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             ),
             (action, params) -> {
                 if (actionCallback != null)
-                    actionCallback.onActionDispatched("com.robbie.action.RECOMMEND_PRODUCTS", params);
-                com.robbie.platform.retail.AsyncTaskHelper.executeDelayed(
-                    () -> action.notify(successResult(), false), 3000);
+                    actionCallback.onActionDispatched("com.robbie.action.RECOMMEND_PRODUCTS", params, createNotifyCompletion(action));
                 return true;
             }
         ));
@@ -334,36 +352,22 @@ public class RobbieAgentBridge implements IAgentBridge {
             }
         ));
 
-        // Action: Buscar productos (local)
-        pageAgent.registerAction(new Action(
-            "com.robbie.action.search_products",
-            "Buscar Productos",
-            "Busca productos en el catalogo y navega a la pantalla de resultados",
-            Arrays.asList(
-                new Parameter("query", ParameterType.STRING,
-                    "Termino de busqueda de productos (ej: proteina, vitaminas, creatina)", true, null)
-            ),
-            (action, params) -> {
-                dispatchAction("com.robbie.action.search_products", action, params);
-                return true;
-            }
-        ));
-
-        // Action: Buscar productos (DB con recomendacion)
+        // Action: Buscar productos en el catalogo local
         pageAgent.registerAction(new Action(
             "com.robbie.action.SEARCH_PRODUCTS",
-            "Buscar productos",
-            "Busca productos en el catalogo local basado en una consulta del usuario. Usa este action cuando el usuario pregunte por productos, categorias, marcas, o caracteristicas especificas.",
+            "Buscar productos en catalogo",
+            "OBLIGATORIO: Usa SIEMPRE este action cuando el usuario pregunte por cualquier producto, suplemento, marca, categoria o ingrediente. " +
+            "Ejemplos: 'tienes proteina?', 'busca omega 3', 'quiero barras', 'vitaminas para energia', 'creatina', 'snacks'. " +
+            "NO respondas solo con texto, SIEMPRE ejecuta este action para buscar en el catalogo real.",
             Arrays.asList(
                 new Parameter("query", ParameterType.STRING,
-                    "Consulta de busqueda del usuario (nombre, categoria, marca, o caracteristicas)", true, null),
+                    "Terminos de busqueda extraidos de lo que pide el usuario (ej: proteina, omega 3, barras, vitamina c, creatina)", true, null),
                 new Parameter("recommendation", ParameterType.STRING,
-                    "Recomendacion personalizada basada en la consulta del usuario", false, null)
+                    "Breve recomendacion personalizada para el usuario", false, null)
             ),
             (action, params) -> {
                 if (actionCallback != null)
-                    actionCallback.onActionDispatched("com.robbie.action.SEARCH_PRODUCTS", params);
-                // No notify aqui, RobotActionHandler lo maneja async
+                    actionCallback.onActionDispatched("com.robbie.action.SEARCH_PRODUCTS", params, createNotifyCompletion(action));
                 return true;
             }
         ));
@@ -381,8 +385,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             ),
             (action, params) -> {
                 if (actionCallback != null)
-                    actionCallback.onActionDispatched("com.robbie.action.NAVIGATE_TO_LOCATION", params);
-                action.notify(successResult(), false);
+                    actionCallback.onActionDispatched("com.robbie.action.NAVIGATE_TO_LOCATION", params, createNotifyCompletion(action));
                 return true;
             }
         ));
@@ -395,8 +398,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             Collections.emptyList(),
             (action, params) -> {
                 if (actionCallback != null)
-                    actionCallback.onActionDispatched("com.robbie.action.STOP_NAVIGATION", params);
-                action.notify(successResult(), false);
+                    actionCallback.onActionDispatched("com.robbie.action.STOP_NAVIGATION", params, createNotifyCompletion(action));
                 return true;
             }
         ));
@@ -539,8 +541,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             Collections.emptyList(),
             (action, params) -> {
                 if (actionCallback != null)
-                    actionCallback.onActionDispatched("com.robbie.action.GO_CHARGE", params);
-                action.notify(successResult(), false);
+                    actionCallback.onActionDispatched("com.robbie.action.GO_CHARGE", params, createNotifyCompletion(action));
                 return true;
             }
         ));
@@ -553,8 +554,7 @@ public class RobbieAgentBridge implements IAgentBridge {
             Collections.emptyList(),
             (action, params) -> {
                 if (actionCallback != null)
-                    actionCallback.onActionDispatched("com.robbie.action.STOP_CHARGE", params);
-                action.notify(successResult(), false);
+                    actionCallback.onActionDispatched("com.robbie.action.STOP_CHARGE", params, createNotifyCompletion(action));
                 return true;
             }
         ));
