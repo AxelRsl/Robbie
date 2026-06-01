@@ -2,11 +2,7 @@ package com.robbie.platform.voice;
 
 import android.util.Log;
 
-import com.ainirobot.coreservice.client.listener.Person;
-import com.ainirobot.coreservice.client.person.PersonApi;
 import com.robbie.data.server.VoiceReportHandler;
-
-import java.util.List;
 
 /**
  * Gestor global (Singleton) para atrapar, calcular duracion y clasificar 
@@ -30,26 +26,29 @@ public class VoiceInteractionTracker {
     }
 
     /**
-     * Se debe llamar desde onASRResult() cuando el usuario termina de hablar.
+     * Se debe llamar desde onASRResult() SOLO cuando transcription.getFinal() sea true.
      * @param question Texto reconocido del usuario.
+     * @param isFinal true si el ASR ya finalizó la captura.
      */
-    public void startInteraction(String question) {
+    public void startInteraction(String question, boolean isFinal) {
+        if (!isFinal) return;
         if (question == null || question.trim().isEmpty()) return;
         
-        Log.i(TAG, "Iniciando tracker para pregunta: " + question);
+        Log.i(TAG, "Iniciando tracker para pregunta final: " + question);
         lastUserQuestion = question;
         lastUserQuestionTime = System.currentTimeMillis();
     }
 
     /**
-     * Se debe llamar desde onTTSResult() cuando el robot finaliza su respuesta.
+     * Se debe llamar desde onTTSResult() SOLO cuando transcription.getFinal() sea true.
      * @param contextName El contexto o modo en el que está el robot ("Robbie Retail", "Robbie Menu", etc.)
-     * @param answer La respuesta que el bot dictó.
+     * @param answer La respuesta completa que el bot dictó.
+     * @param isFinal true si el TTS ya finalizó la respuesta.
+     * @param activeTargetId ID del usuario rastreado por RobbieFaceTrackManager, o -1 si ninguno.
      */
-    public void finishInteraction(String contextName, String answer) {
-        if (lastUserQuestion.isEmpty()) {
-            return; // No hay pregunta pendiente
-        }
+    public void finishInteraction(String contextName, String answer, boolean isFinal, int activeTargetId) {
+        if (!isFinal) return;
+        if (lastUserQuestion.isEmpty()) return;
 
         try {
             long endedAtMs = System.currentTimeMillis();
@@ -68,28 +67,9 @@ public class VoiceInteractionTracker {
                 resolved = false;
             }
 
-            // Obtener el ID del usuario directamente usando las camaras
-            String userId = "Visitante";
-            try {
-                List<Person> faces = PersonApi.getInstance().getCompleteFaceList();
-                if (faces == null || faces.isEmpty()) {
-                    faces = PersonApi.getInstance().getAllFaceList(3); // 3 metros max
-                }
-                
-                if (faces != null && !faces.isEmpty()) {
-                    Person best = faces.get(0);
-                    for (Person p : faces) {
-                        if (p.getDistance() > 0 && p.getDistance() < best.getDistance()) {
-                            best = p;
-                        }
-                    }
-                    userId = "User_" + best.getId();
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "Error obteniendo ID visual de la persona", e);
-            }
+            String userId = (activeTargetId != -1) ? "User_" + activeTargetId : "Visitante";
 
-            Log.i(TAG, "Guardando interaccion de " + durationSecs + "s del " + userId);
+            Log.i(TAG, "Guardando interaccion finalizada de " + durationSecs + "s para " + userId);
             
             VoiceReportHandler.logInteraction(
                 contextName, lastUserQuestion, answer != null ? answer : "", 
@@ -97,7 +77,6 @@ public class VoiceInteractionTracker {
             );
 
         } finally {
-            // Siempre reiniciar el tracker para evitar falsos enganches futuros
             lastUserQuestion = "";
             lastUserQuestionTime = 0;
         }

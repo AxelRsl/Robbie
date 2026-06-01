@@ -14,7 +14,7 @@ import org.json.JSONObject;
 /**
  * AgentModule - Puente React Native para las APIs utilitarias de AgentCore.
  *
- * Segun la documentacion oficial del Agent SDK (v0.2.2):
+ * Segun la documentacion oficial del Agent SDK (v0.4.5):
  * - El mic se abre automaticamente cuando la app esta en foreground.
  * - ASR/TTS/LLM son gestionados internamente por AgentOS.
  * - AppAgent se inicializa en RobotApp.onCreate() (persona + objetivo).
@@ -25,6 +25,8 @@ import org.json.JSONObject;
  * - tts(text): reproduce TTS asincrono
  * - stopTTS(): detiene TTS en curso
  * - setMicMuted(boolean): controla el microfono
+ * - setWakeFreeEnabled(boolean): controla modo libre de despertar
+ * - setWakeupMode(boolean): activa modo estricto por palabra de despertar
  * - uploadInterfaceInfo(info): sube info de pantalla al LLM
  * - clearContext(): limpia historial de conversacion del LLM
  * - getAvailablePlugins(): lista plugins OPK en assets
@@ -106,99 +108,35 @@ public class AgentModule extends ReactContextBaseJavaModule {
         }
     }
 
+    /**
+     * Controla el modo libre de despertar (wake-free / filtro visual de rostros).
+     * Doc: AgentCore.setEnableWakeFree(enabled)
+     */
     @ReactMethod
-    public void setRecognizable(boolean enabled, Promise promise) {
-        try {
-            AgentCore.INSTANCE.setMicrophoneMuted(!enabled);
-            promise.resolve(true);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en setRecognizable", e);
-            promise.reject("SPEECH_RECOGNIZABLE_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void setRecognizeMode(boolean enabled, Promise promise) {
+    public void setWakeFreeEnabled(boolean enabled, Promise promise) {
         try {
             AgentCore.INSTANCE.setEnableWakeFree(enabled);
+            Log.i(TAG, "Wake-free: " + enabled);
             promise.resolve(true);
         } catch (Exception e) {
-            Log.e(TAG, "Error en setRecognizeMode", e);
-            promise.reject("SPEECH_RECOGNIZE_MODE_ERROR", e.getMessage());
+            Log.e(TAG, "Error en setWakeFreeEnabled", e);
+            promise.reject("WAKE_FREE_ERROR", e.getMessage());
         }
     }
 
+    /**
+     * Activa el modo estricto por palabra de despertar.
+     * Doc: AgentCore.enableWakeupMode(enabled)
+     */
     @ReactMethod
-    public void setRecognizeModeForce(boolean enabled, Promise promise) {
+    public void setWakeupMode(boolean enabled, Promise promise) {
         try {
             AgentCore.INSTANCE.enableWakeupMode(enabled);
+            Log.i(TAG, "Wakeup mode: " + enabled);
             promise.resolve(true);
         } catch (Exception e) {
-            Log.e(TAG, "Error en setRecognizeModeForce", e);
-            promise.reject("SPEECH_RECOGNIZE_MODE_FORCE_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void setRecognizeModeNew(boolean enabled, boolean closeStreamData, Promise promise) {
-        try {
-            AgentCore.INSTANCE.setEnableWakeFree(enabled);
-            promise.resolve(true);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en setRecognizeModeNew", e);
-            promise.reject("SPEECH_RECOGNIZE_MODE_NEW_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void setASREnabled(boolean enabled, Promise promise) {
-        try {
-            AgentCore.INSTANCE.setMicrophoneMuted(!enabled);
-            promise.resolve(true);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en setASREnabled", e);
-            promise.reject("SPEECH_ASR_ENABLED_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void setASRParams(String key, String value, Promise promise) {
-        try {
-            promise.resolve(true);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en setASRParams", e);
-            promise.reject("SPEECH_ASR_PARAMS_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void setAsrExtendProperty(String property, Promise promise) {
-        try {
-            promise.resolve(false);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en setAsrExtendProperty", e);
-            promise.reject("SPEECH_ASR_EXTEND_PROPERTY_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void setAngleCenterRange(double center, double range, Promise promise) {
-        try {
-            promise.resolve(true);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en setAngleCenterRange", e);
-            promise.reject("SPEECH_ANGLE_ERROR", e.getMessage());
-        }
-    }
-
-    @ReactMethod
-    public void queryByText(String text, Promise promise) {
-        try {
-            AgentCore.INSTANCE.query(text);
-            promise.resolve(true);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en queryByText", e);
-            promise.reject("QUERY_BY_TEXT_ERROR", e.getMessage());
+            Log.e(TAG, "Error en setWakeupMode", e);
+            promise.reject("WAKEUP_MODE_ERROR", e.getMessage());
         }
     }
 

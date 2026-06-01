@@ -86,7 +86,7 @@ public class RobbieAgentBridge implements IAgentBridge {
                     Log.d(TAG, "ASR final: " + text);
 
                     if (!text.isEmpty()) {
-                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text);
+                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text, true);
                         if (transcriptionCallback != null) transcriptionCallback.onASRFinal(text);
                     }
                     // Return false: let AgentOS handle voice bar display and LLM planning natively
@@ -98,7 +98,14 @@ public class RobbieAgentBridge implements IAgentBridge {
                     if (transcription.getFinal()) {
                         Log.d(TAG, "TTS final: " + transcription.getText());
                         
-                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().finishInteraction("Robbie", transcription.getText());
+                        int activeTargetId = -1;
+                        if (RobotActionHandler.getInstance() != null
+                                && RobotActionHandler.getInstance().getFaceTrackSnapshot() != null) {
+                            Integer targetId = RobotActionHandler.getInstance().getFaceTrackSnapshot().getActiveTargetId();
+                            if (targetId != null) activeTargetId = targetId;
+                        }
+                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance()
+                                .finishInteraction("Robbie", transcription.getText(), true, activeTargetId);
 
                         mainHandler.removeCallbacks(restoreDefaultLight);
                         mainHandler.postDelayed(restoreDefaultLight, 1000);
@@ -221,7 +228,14 @@ public class RobbieAgentBridge implements IAgentBridge {
     }
 
     public void onActivityStop() {
-        // PageAgent(activity) auto-manages lifecycle; no manual end() needed
+        if (pageAgent != null) {
+            try {
+                pageAgent.end();
+                Log.d(TAG, "PageAgent.end() called in onActivityStop");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to end PageAgent", e);
+            }
+        }
     }
 
     /**

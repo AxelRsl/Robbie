@@ -29,6 +29,7 @@ public class RobbieConfig {
     private boolean showSearchBar;
     private boolean showMicButton;
     private int retailColumns;
+    private boolean wakeUpWordEnabled;
     
     public RobbieConfig() {
         this.persona = "Tu nombre es Robbie. Eres un asistente de tienda retail amigable y profesional.";
@@ -47,6 +48,7 @@ public class RobbieConfig {
         this.showSearchBar = false;
         this.showMicButton = false;
         this.retailColumns = 4;
+        this.wakeUpWordEnabled = false;
         initializeDefaultActions();
     }
     
@@ -98,6 +100,8 @@ public class RobbieConfig {
                         config.showMicButton = uiConfigJson.optBoolean("showMicButton", false);
                         config.retailColumns = uiConfigJson.optInt("retailColumns", 4);
                     }
+
+                    config.wakeUpWordEnabled = json.optBoolean("wakeUpWordEnabled", false);
 
                     // Cargar configuracion de PageAgent
                     config.pageObjective = json.optString("pageObjective", config.pageObjective);
@@ -203,6 +207,7 @@ public class RobbieConfig {
     public boolean isShowSearchBar() { return showSearchBar; }
     public boolean isShowMicButton() { return showMicButton; }
     public int getRetailColumns() { return retailColumns; }
+    public boolean isWakeUpWordEnabled() { return wakeUpWordEnabled; }
 
     public String getPersona() { return persona; }
     public String getObjective() { return objective; }

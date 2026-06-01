@@ -71,15 +71,39 @@ public class RobbieRetailActivity extends EveActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        // PageAgent(activity) auto-manages lifecycle; no manual begin() needed
-        AgentCore.INSTANCE.enableWakeupMode(false);
-        AgentCore.INSTANCE.setEnableWakeFree(true);
-        Log.d(TAG, "Wake-free activado - mic se abre al detectar cara");
+        if (pageAgent != null) {
+            try {
+                pageAgent.begin();
+                Log.d(TAG, "PageAgent.begin() called");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to begin PageAgent", e);
+            }
+        }
+
+        uploadCatalogInfoToAgent();
+
+        boolean useWakeUpWord = robbieConfig != null && robbieConfig.isWakeUpWordEnabled();
+        if (useWakeUpWord) {
+            AgentCore.INSTANCE.enableWakeupMode(true);
+            AgentCore.INSTANCE.setEnableWakeFree(false);
+            Log.i(TAG, "Configuracion OrionStar: Modo Wakeup Word ACTIVADO");
+        } else {
+            AgentCore.INSTANCE.enableWakeupMode(false);
+            AgentCore.INSTANCE.setEnableWakeFree(true);
+            Log.i(TAG, "Configuracion OrionStar: Modo Wake-Free ACTIVADO");
+        }
     }
 
     @Override
     protected void onStop() {
-        // PageAgent(activity) auto-manages lifecycle; no manual end() needed
+        if (pageAgent != null) {
+            try {
+                pageAgent.end();
+                Log.d(TAG, "PageAgent.end() called in onStop");
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to end PageAgent", e);
+            }
+        }
         super.onStop();
     }
 
@@ -198,63 +222,46 @@ public class RobbieRetailActivity extends EveActivity {
     }
 
     /**
-     * Configura listener de transcripcion para ASR y TTS.
-     * Maneja el wake word "Robbie" y variantes.
+     * Configura listener de transcripcion nativo para ASR y TTS.
+     * Retorna false en onASRResult para que AgentOS procese el texto
+     * con su LLM y dispare Actions automaticamente.
      */
     private void setupTranscriptionListener() {
-        Log.i(TAG, "Configurando listener de transcripcion");
+        Log.i(TAG, "Configurando listener de transcripcion nativo");
         pageAgent.setOnTranscribeListener(new OnTranscribeListener() {
             @Override
             public boolean onASRResult(Transcription transcription) {
                 String text = transcription.getText().trim();
-                Log.d(TAG, "[ASR] Recibido - texto: '" + text + "', final: " + transcription.getFinal());
 
-                // Mostrar ASR parcial en la UI del sistema
                 if (!transcription.getFinal()) {
-                    Log.d(TAG, "[ASR] Transcripcion parcial, mostrando en UI");
                     return false;
                 }
 
                 Log.i(TAG, "[ASR] Transcripcion final: " + text);
 
-                // Guardamos el texto bruto final, independientemente del wake word
-                com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text);
-
-                // Detectar wake word "Robbie" y variantes
-                String lower = text.toLowerCase();
-                Log.d(TAG, "[ASR] Buscando wake word en: '" + lower + "'");
-                if (lower.contains("robbie") || lower.contains("robi")
-                        || lower.contains("rubi") || lower.contains("robin")
-                        || lower.contains("robe") || lower.contains("robby")) {
-                    
-                    Log.i(TAG, "[ASR] Wake word detectado!");
-                    // Remover wake word y procesar comando
-                    String command = text.replaceAll("(?i)robbie|robi|rubi|robin|robe|robby", "").trim();
-                    if (command.isEmpty()) {
-                        Log.d(TAG, "[ASR] Solo wake word, pidiendo comando");
-                        AgentCore.INSTANCE.tts("Si? En que te puedo ayudar?", 10000, null);
-                    } else {
-                        Log.i(TAG, "[ASR] Wake word + comando detectado - query: '" + command + "'");
-                        // Reiniciar el tracker con el query filtrado
-                        com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(command);
-                        AgentCore.INSTANCE.query(command);
-                    }
-                    return true;
-                } else {
-                    Log.w(TAG, "[ASR] No wake word detectado, ignorando: '" + text + "'");
-                    // En modo wake-free, AgentOS podría responder de todas formas aunque devolvamos true.
-                    // Así que mantenemos lastUserQuestion en caso de que AgentOS emita un TTS.
-                    return true; // Suprimir - no hay wake word
+                if (!text.isEmpty()) {
+                    com.robbie.platform.voice.VoiceInteractionTracker.getInstance().startInteraction(text, true);
                 }
+
+                // Retornar false: AgentOS toma el texto, lo envia al LLM
+                // y dispara las Actions registradas (SEARCH_PRODUCTS, etc.)
+                return false;
             }
 
             @Override
             public boolean onTTSResult(Transcription transcription) {
                 if (transcription.getFinal()) {
-                    Log.d(TAG, "Retail ASR/TTS final: " + transcription.getText());
-                    
-                    com.robbie.platform.voice.VoiceInteractionTracker.getInstance().finishInteraction("Robbie Retail", transcription.getText());
-                    
+                    Log.d(TAG, "Retail TTS finalizado: " + transcription.getText());
+
+                    int activeTargetId = -1;
+                    if (com.robbie.platform.agent.RobotActionHandler.getInstance() != null
+                            && com.robbie.platform.agent.RobotActionHandler.getInstance().getFaceTrackSnapshot() != null) {
+                        Integer targetId = com.robbie.platform.agent.RobotActionHandler.getInstance().getFaceTrackSnapshot().getActiveTargetId();
+                        if (targetId != null) activeTargetId = targetId;
+                    }
+                    com.robbie.platform.voice.VoiceInteractionTracker.getInstance()
+                            .finishInteraction("Robbie Retail", transcription.getText(), true, activeTargetId);
+
                     AgentCore.INSTANCE.setEnableWakeFree(true);
                 }
                 return false;
@@ -292,8 +299,13 @@ public class RobbieRetailActivity extends EveActivity {
      * Ahora carga productos desde la base de datos local.
      */
     private void uploadCatalogInfoToAgent() {
-        AgentCore.INSTANCE.uploadInterfaceInfo("");
-        Log.d(TAG, "Retail interface info reset to empty state");
+        String catalogSummary = ProductCatalogCache.getInstance(this)
+                .buildAgentCatalogSummary("Catálogo GNC Disponible", 15, true);
+
+        if (!catalogSummary.isEmpty()) {
+            AgentCore.INSTANCE.uploadInterfaceInfo(catalogSummary);
+            Log.i(TAG, "Contexto del catálogo subido al LLM de AgentOS");
+        }
     }
 
     /**
