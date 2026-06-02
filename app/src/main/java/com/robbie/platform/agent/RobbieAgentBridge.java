@@ -48,6 +48,7 @@ public class RobbieAgentBridge implements IAgentBridge {
     private final Runnable restoreDefaultLight = () -> LedController.getInstance().restoreDefault();
     private volatile String lastAgentStatus = "reset_status";
     private volatile String lastAgentMessage = "";
+    private volatile boolean personVisible = false;
 
     @Override
     public void initialize(Activity activity,
@@ -98,18 +99,11 @@ public class RobbieAgentBridge implements IAgentBridge {
                     if (transcription.getFinal()) {
                         Log.d(TAG, "TTS final: " + transcription.getText());
                         
-                        int activeTargetId = -1;
-                        if (RobotActionHandler.getInstance() != null
-                                && RobotActionHandler.getInstance().getFaceTrackSnapshot() != null) {
-                            Integer targetId = RobotActionHandler.getInstance().getFaceTrackSnapshot().getActiveTargetId();
-                            if (targetId != null) activeTargetId = targetId;
-                        }
                         com.robbie.platform.voice.VoiceInteractionTracker.getInstance()
-                                .finishInteraction("Robbie", transcription.getText(), true, activeTargetId);
+                                .finishInteraction("Robbie", transcription.getText(), true, -1);
 
                         mainHandler.removeCallbacks(restoreDefaultLight);
                         mainHandler.postDelayed(restoreDefaultLight, 1000);
-                        AgentCore.INSTANCE.setEnableWakeFree(true);
                     }
                     if (transcriptionCallback != null)
                         transcriptionCallback.onTTSUpdate(transcription.getText(), transcription.getFinal());
@@ -129,7 +123,7 @@ public class RobbieAgentBridge implements IAgentBridge {
                         boolean active = "listening".equals(lastAgentStatus)
                             || "thinking".equals(lastAgentStatus)
                             || "processing".equals(lastAgentStatus);
-                        transcriptionCallback.onListeningGateChanged(active, active);
+                        transcriptionCallback.onListeningGateChanged(active, personVisible);
                     }
                     return false;
                 }
@@ -177,6 +171,18 @@ public class RobbieAgentBridge implements IAgentBridge {
     }
 
     @Override
+    public void onPersonVisibilityChanged(boolean visible) {
+        this.personVisible = visible;
+        Log.d(TAG, "PersonApi visibility: " + (visible ? "VISIBLE" : "GONE"));
+        if (transcriptionCallback != null) {
+            boolean active = "listening".equals(lastAgentStatus)
+                    || "thinking".equals(lastAgentStatus)
+                    || "processing".equals(lastAgentStatus);
+            transcriptionCallback.onListeningGateChanged(active, visible);
+        }
+    }
+
+    @Override
     public void uploadInterfaceInfo(String info) {
         AgentCore.INSTANCE.uploadInterfaceInfo(info);
     }
@@ -212,30 +218,23 @@ public class RobbieAgentBridge implements IAgentBridge {
      * Llamar desde onStart() de la Activity.
      */
     public void onActivityStart() {
-        if (pageAgent != null) {
-            try {
-                pageAgent.begin();
-                Log.d(TAG, "PageAgent.begin() called");
-            } catch (Exception e) {
-                Log.w(TAG, "Failed to begin PageAgent", e);
-            }
-        }
+        // PageAgent(Activity) auto-manages begin()/end() tied to Activity lifecycle.
+        // No manual pageAgent.begin() needed — per SDK docs section 2.2.2:
+        // "Actions automatically take effect when the page becomes visible to the user"
+        // VisionSdk face detection is broken on this unit (output_faces:0 always).
+        // Wake-free depends on VisionSdk, so it never activates.
+        // Workaround: unconditional listening + PersonApi-based smart detection.
         AgentCore.INSTANCE.enableWakeupMode(false);
-        AgentCore.INSTANCE.setEnableWakeFree(true);
+        AgentCore.INSTANCE.setEnableWakeFree(false);
         AgentCore.INSTANCE.setMicrophoneMuted(false);
         AgentCore.INSTANCE.setEnableVoiceBar(true);
-        Log.d(TAG, "Wake mode: OFF, wake-free=ON, mic=OPEN, voiceBar=ON");
+        Log.d(TAG, "Wake mode: OFF, wake-free=OFF (unconditional+PersonApi), mic=OPEN, voiceBar=ON");
     }
 
     public void onActivityStop() {
-        if (pageAgent != null) {
-            try {
-                pageAgent.end();
-                Log.d(TAG, "PageAgent.end() called in onActivityStop");
-            } catch (Exception e) {
-                Log.w(TAG, "Failed to end PageAgent", e);
-            }
-        }
+        // PageAgent(Activity) auto-manages begin()/end() tied to Activity lifecycle.
+        // No manual pageAgent.end() needed.
+        Log.d(TAG, "onActivityStop — PageAgent lifecycle auto-managed");
     }
 
     /**

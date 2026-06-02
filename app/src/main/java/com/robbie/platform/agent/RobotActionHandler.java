@@ -17,17 +17,6 @@ import com.robbie.platform.retail.AsyncTaskHelper;
 import com.robbie.platform.retail.ProductCatalogCache;
 import com.robbie.platform.robot.ChargingStateManager;
 import com.robbie.platform.robot.RobotApiService;
-import com.robbie.platform.oem.person.TrackedPerson;
-import com.robbie.platform.oem.person.OrionPersonGatewayConfig;
-import com.robbie.platform.oem.person.OrionPersonGatewayImpl;
-import com.robbie.platform.tracking.FaceTrackManager;
-import com.robbie.platform.tracking.RobbieFaceTrackConfig;
-import com.robbie.platform.tracking.RobbieFaceTrackDiagnostics;
-import com.robbie.platform.tracking.RobbieFaceTrackListener;
-import com.robbie.platform.tracking.RobbieFaceTrackMetrics;
-import com.robbie.platform.tracking.RobbieFaceTrackSnapshot;
-import com.robbie.platform.tracking.RobbieFaceTrackState;
-import com.robbie.platform.tracking.RobbieFaceTrackManager;
 import com.robbie.data.local.RobbieDatabase;
 import com.robbie.data.local.entity.ProductEntity;
 
@@ -35,6 +24,8 @@ import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.CommandListener;
 import com.ainirobot.coreservice.client.Definition;
+import com.ainirobot.coreservice.client.person.PersonApi;
+import com.ainirobot.coreservice.client.listener.Person;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -56,27 +47,23 @@ public class RobotActionHandler {
 
     private static final String TAG = "RobotActionHandler";
     private static final String SERVICE_OWNER = "RobotActionHandler";
-    private static final String FACE_TRACK_GATEWAY_OWNER = "RobotActionHandlerFaceGateway";
-    private static final String FACE_TRACK_MANAGER_OWNER = "RobotActionHandlerFaceTrack";
     private static RobotActionHandler instance;
-    private static final long FACE_VISIBILITY_GRACE_MS = 4000L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final android.content.Context context;
     private final RobotApiService robotApiService = RobotApiService.getInstance();
     private final ChargingStateManager chargingStateManager = ChargingStateManager.getInstance();
-    private final FaceTrackManager faceTrackManager;
-    private final RobbieFaceTrackListener faceTrackDiagnosticsListener;
 
     private RobotApi robotApi;
     private int lightReqId = 2001;
     private int navReqId = 3001;
-
     private boolean robotApiConnected = false;
-    private boolean faceTrackActive = false;
-    private long lastVisiblePersonAtMs = 0L;
-    private boolean microphoneOpenForVisiblePerson = false;
-    private boolean lastReportedVisiblePerson = false;
+    private boolean personPollRunning = false;
+    private boolean isPersonNearby = false;
+    private int noPersonCount = 0;
+    private static final int NO_PERSON_THRESHOLD = 5;
+    private static final long PERSON_POLL_INTERVAL_MS = 1500;
+    private final Runnable personPollRunnable = () -> pollPersonApi();
     private boolean isNavigating = false;
     private boolean isChargingMode = false;
     private boolean isNavigatingToCharger = false;
@@ -85,10 +72,6 @@ public class RobotActionHandler {
     private boolean lastChargingUiActive = false;
     private final List<String> mapPlaces = new ArrayList<>();
     private final ProceduralAnimationManager animationManager;
-    private RobbieFaceTrackDiagnostics lastFaceTrackDiagnostics;
-    private RobbieFaceTrackState lastLoggedFaceTrackState;
-    private Integer lastLoggedTargetId = null;
-    private boolean lastLoggedFollowing = false;
 
     private IAgentBridge agentBridge;
     private ActionResultCallback resultCallback;
@@ -112,26 +95,6 @@ public class RobotActionHandler {
     public RobotActionHandler(android.content.Context context) {
         this.context = context.getApplicationContext();
         this.animationManager = ProceduralAnimationManager.getInstance(this.context);
-        OrionPersonGatewayImpl personGateway = new OrionPersonGatewayImpl(
-            this.context,
-            robotApiService,
-            new OrionPersonGatewayConfig(FACE_TRACK_GATEWAY_OWNER, FACE_TRACK_GATEWAY_OWNER)
-        );
-        this.faceTrackManager = new RobbieFaceTrackManager(
-            this.context,
-            personGateway,
-            robotApiService,
-            new RobbieFaceTrackConfig(FACE_TRACK_MANAGER_OWNER, FACE_TRACK_MANAGER_OWNER)
-        );
-        this.faceTrackDiagnosticsListener = new RobbieFaceTrackListener() {
-            @Override
-            public void onDiagnosticsUpdated(RobbieFaceTrackDiagnostics diagnostics) {
-                mainHandler.post(() -> handleFaceTrackDiagnostics(diagnostics));
-            }
-        };
-        this.faceTrackManager.addListener(this.faceTrackDiagnosticsListener);
-        this.lastFaceTrackDiagnostics = this.faceTrackManager.currentDiagnostics();
-        this.lastLoggedFaceTrackState = this.lastFaceTrackDiagnostics.getSnapshot().getState();
         instance = this;
     }
 
@@ -141,9 +104,6 @@ public class RobotActionHandler {
             robotApi = connectedRobotApi;
             robotApiConnected = true;
             loadPlaceList();
-            if (faceTrackActive) {
-                faceTrackManager.requestEvaluation("robot_action_handler_connected");
-            }
             TourExecutor.getInstance().setChassisController(new TourExecutor.ChassisController() {
                 @Override
                 public void stopFaceTracking() {
@@ -236,7 +196,9 @@ public class RobotActionHandler {
 
     private void ensureRobotServicesStarted() {
         robotApiService.retain(SERVICE_OWNER, context);
-        robotApiService.startVisionSdkProbe(context);
+        // NOTE: startVisionSdkProbe removed — binding to VisionSdkService grabs the camera
+        // and blocks the AgentOS wake-free vision+acoustic algorithm from opening the mic.
+        // See FAQ: "如应用正在调用摄像头，可通过关闭免唤醒功能或关闭摄像头调用进行测试"
         chargingStateManager.start(context, SERVICE_OWNER);
         robotApiService.connect(context, null);
         if (robotServicesStarted) {
@@ -875,101 +837,60 @@ public class RobotActionHandler {
 
     // ==================== Face Tracking ====================
 
+    public boolean isPersonNearby() {
+        return isPersonNearby;
+    }
+
     public void startFaceTracking() {
         ensureRobotServicesStarted();
-        // Delegated to OrionStar wake-free — no custom face tracking
-        Log.i(TAG, "Face tracking delegated to OrionStar wake-free");
+        personPollRunning = true;
+        mainHandler.removeCallbacks(personPollRunnable);
+        mainHandler.postDelayed(personPollRunnable, PERSON_POLL_INTERVAL_MS);
+        Log.i(TAG, "PersonApi polling started (wake-free workaround)");
     }
 
     public void stopFaceTracking() {
-        // Delegated to OrionStar wake-free — no custom face tracking
-        Log.i(TAG, "Face tracking stop delegated to OrionStar wake-free");
+        personPollRunning = false;
+        mainHandler.removeCallbacks(personPollRunnable);
+        Log.i(TAG, "PersonApi polling stopped");
     }
 
-    private void handleFaceTrackDiagnostics(RobbieFaceTrackDiagnostics diagnostics) {
-        if (diagnostics == null) {
-            return;
-        }
-        lastFaceTrackDiagnostics = diagnostics;
-        RobbieFaceTrackSnapshot snapshot = diagnostics.getSnapshot();
-        boolean seesPersonNow = hasVisibleTrackedPerson(diagnostics, snapshot);
-        syncVoiceListeningState(snapshot, seesPersonNow);
-        logFaceTrackOwnership(diagnostics);
-    }
+    private void pollPersonApi() {
+        if (!personPollRunning) return;
+        try {
+            PersonApi pApi = PersonApi.getInstance();
+            List<Person> faces = pApi.getAllFaceList();
+            boolean faceDetected = faces != null && !faces.isEmpty();
 
-    private boolean hasVisibleTrackedPerson(RobbieFaceTrackDiagnostics diagnostics, RobbieFaceTrackSnapshot snapshot) {
-        if (diagnostics.getLatestFrame().getStale()) {
-            return false;
-        }
-        Integer activeTargetId = snapshot.getActiveTargetId();
-        List<TrackedPerson> persons = diagnostics.getLatestFrame().getPersons();
-        if (activeTargetId != null) {
-            for (TrackedPerson person : persons) {
-                if (person != null && person.getId() == activeTargetId.intValue()) {
-                    return true;
+            if (faceDetected) {
+                noPersonCount = 0;
+                Person f = faces.get(0);
+                if (!isPersonNearby) {
+                    isPersonNearby = true;
+                    Log.i(TAG, "[PersonPoll] Person ARRIVED angle=" + f.getAngle()
+                            + " dist=" + String.format("%.2f", f.getDistance()));
+                    notifyPersonVisibilityChanged(true);
+                }
+            } else {
+                noPersonCount++;
+                if (isPersonNearby && noPersonCount >= NO_PERSON_THRESHOLD) {
+                    isPersonNearby = false;
+                    Log.i(TAG, "[PersonPoll] Person LEFT (no face for " + noPersonCount + " polls)");
+                    notifyPersonVisibilityChanged(false);
                 }
             }
+        } catch (Exception e) {
+            Log.w(TAG, "[PersonPoll] error: " + e.getMessage());
         }
-        return !persons.isEmpty();
-    }
-
-    private void syncVoiceListeningState(RobbieFaceTrackSnapshot snapshot, boolean seesPersonNow) {
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (seesPersonNow) {
-            lastVisiblePersonAtMs = now;
-        }
-        boolean managerOwnsTracking = faceTrackActive && snapshot.getEnabled();
-        boolean shouldListen = managerOwnsTracking && snapshot.getRobotApiConnected() && (seesPersonNow || hasRecentVisiblePerson(now));
-        updateVoiceListeningState(shouldListen, seesPersonNow, "manager:" + snapshot.getState().name() + ":" + snapshot.getLastDecisionReason());
-    }
-
-    private void logFaceTrackOwnership(RobbieFaceTrackDiagnostics diagnostics) {
-        RobbieFaceTrackSnapshot snapshot = diagnostics.getSnapshot();
-        if (lastLoggedFaceTrackState != snapshot.getState()) {
-            Log.i(
-                TAG,
-                "Face tracking manager state=" + snapshot.getState()
-                    + " reason=" + snapshot.getLastDecisionReason()
-                    + " owner=RobbieFaceTrackManager"
-            );
-            lastLoggedFaceTrackState = snapshot.getState();
-        }
-        Integer activeTargetId = snapshot.getActiveTargetId();
-        if ((lastLoggedTargetId == null && activeTargetId != null)
-            || (lastLoggedTargetId != null && !lastLoggedTargetId.equals(activeTargetId))) {
-            Log.i(
-                TAG,
-                "Face tracking target changed. activeTarget=" + activeTargetId
-                    + " candidateTarget=" + snapshot.getCandidateTargetId()
-                    + " score=" + snapshot.getLastSelectionScore()
-            );
-            lastLoggedTargetId = activeTargetId;
-        }
-        if (lastLoggedFollowing != snapshot.getFollowing()) {
-            Log.i(
-                TAG,
-                "Face tracking follow state=" + snapshot.getFollowing()
-                    + " requestId=" + snapshot.getFollowRequestId()
-                    + " lastError=" + snapshot.getLastErrorMessage()
-            );
-            lastLoggedFollowing = snapshot.getFollowing();
+        if (personPollRunning) {
+            mainHandler.postDelayed(personPollRunnable, PERSON_POLL_INTERVAL_MS);
         }
     }
 
-    private boolean hasRecentVisiblePerson(long now) {
-        return lastVisiblePersonAtMs > 0L && (now - lastVisiblePersonAtMs) <= FACE_VISIBILITY_GRACE_MS;
-    }
-
-    private void updateVoiceListeningState(boolean shouldListen, boolean seesPersonNow, String reason) {
-        if (microphoneOpenForVisiblePerson == shouldListen && lastReportedVisiblePerson == seesPersonNow) {
-            return;
-        }
-        microphoneOpenForVisiblePerson = shouldListen;
-        lastReportedVisiblePerson = seesPersonNow;
+    private void notifyPersonVisibilityChanged(boolean visible) {
         if (agentBridge != null) {
-            agentBridge.setVisionListeningState(shouldListen, seesPersonNow);
+            agentBridge.onPersonVisibilityChanged(visible);
         }
-        Log.d(TAG, "Voice gate updated. shouldListen=" + shouldListen + " visible=" + seesPersonNow + " reason=" + reason);
     }
 
     // ==================== Context Upload ====================
@@ -1178,25 +1099,11 @@ public class RobotActionHandler {
         return isChargingMode;
     }
 
-    public RobbieFaceTrackSnapshot getFaceTrackSnapshot() {
-        return faceTrackManager.currentSnapshot();
-    }
-
-    public RobbieFaceTrackMetrics getFaceTrackMetrics() {
-        return faceTrackManager.currentMetrics();
-    }
-
-    public RobbieFaceTrackDiagnostics getFaceTrackDiagnostics() {
-        return lastFaceTrackDiagnostics != null ? lastFaceTrackDiagnostics : faceTrackManager.currentDiagnostics();
-    }
-
     public void destroy() {
         chargingStateManager.removeListener(chargingStateListener);
         robotApiService.removeConnectionListener(robotApiConnectionListener);
         stopBatteryMonitor();
         stopFaceTracking();
-        faceTrackManager.removeListener(faceTrackDiagnosticsListener);
-        robotApiService.stopVisionSdkProbe();
         robotApiService.release(SERVICE_OWNER);
         robotServicesStarted = false;
     }

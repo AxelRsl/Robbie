@@ -9,8 +9,8 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-
-import org.json.JSONObject;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.WritableNativeMap;
 
 /**
  * ChargingModule - Modulo nativo para control de carga del robot.
@@ -96,15 +96,15 @@ public class ChargingModule extends ReactContextBaseJavaModule {
     public void getBatteryInfo(Promise promise) {
         try {
             ChargingStateManager.Snapshot snapshot = chargingStateManager.snapshot();
-            JSONObject info = new JSONObject();
-            info.put("level", snapshot.batteryLevel);
-            info.put("isCharging", snapshot.isCharging);
-            info.put("isNavigatingToCharger", snapshot.isNavigatingToCharger);
-            info.put("status", snapshot.status);
-            info.put("message", snapshot.message);
-            info.put("robotApiConnected", snapshot.robotApiConnected);
-            info.put("autoTriggered", snapshot.autoTriggered);
-            promise.resolve(info.toString());
+            WritableMap info = new WritableNativeMap();
+            info.putInt("level", snapshot.batteryLevel);
+            info.putBoolean("isCharging", snapshot.isCharging);
+            info.putBoolean("isNavigatingToCharger", snapshot.isNavigatingToCharger);
+            info.putString("status", snapshot.status);
+            info.putString("message", snapshot.message);
+            info.putBoolean("robotApiConnected", snapshot.robotApiConnected);
+            info.putBoolean("autoTriggered", snapshot.autoTriggered);
+            promise.resolve(info);
         } catch (Exception e) {
             Log.e(TAG, "Error getting battery info", e);
             promise.reject("ERROR", "Failed to get battery info: " + e.getMessage());

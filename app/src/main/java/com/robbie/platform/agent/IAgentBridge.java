@@ -72,6 +72,11 @@ public interface IAgentBridge {
     void setVisionListeningState(boolean gateOpen, boolean personVisible);
 
     /**
+     * Notifica que la visibilidad de una persona cambio (via PersonApi).
+     */
+    void onPersonVisibilityChanged(boolean visible);
+
+    /**
      * Sube informacion de contexto/interfaz al LLM.
      */
     void uploadInterfaceInfo(String info);

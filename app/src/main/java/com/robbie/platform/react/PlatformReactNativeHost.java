@@ -4,9 +4,6 @@ import android.app.Application;
 import android.util.Log;
 
 import com.robbie.BuildConfig;
-import com.robbie.platform.react.modules.RNCSliderPackage;
-import com.robbie.platform.react.modules.RNFSPackage;
-import com.robbie.platform.react.modules.RNGestureHandlerPackage;
 import com.robbie.platform.react.modules.AgentModule;
 import com.robbie.platform.react.modules.RobotConfigModule;
 import com.robbie.platform.react.modules.RobotSkillModule;
@@ -53,11 +50,6 @@ public class PlatformReactNativeHost extends ReactNativeHost {
     protected List<ReactPackage> getPackages() {
         List<ReactPackage> packages = new ArrayList<>();
         packages.add(new MainReactPackage());
-        
-        // Módulos nativos personalizados para compatibilidad con bundle 0.59.10
-        packages.add(new RNCSliderPackage());
-        packages.add(new RNFSPackage());
-        packages.add(new RNGestureHandlerPackage());
         
         // React Native Vector Icons
         packages.add(new VectorIconsPackage());

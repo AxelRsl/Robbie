@@ -15,8 +15,8 @@ export class RobotBridge {
   
   static async getConfig(): Promise<RobotConfig> {
     try {
-      const configJson = await RobotConfigModule.getConfig();
-      return JSON.parse(configJson);
+      const config = await RobotConfigModule.getConfig();
+      return config;
     } catch (error) {
       console.error('Error getting config:', error);
       throw error;
@@ -352,8 +352,8 @@ export class RobotBridge {
 
   static async getBatteryInfo(): Promise<any> {
     try {
-      const infoJson = await ChargingModule.getBatteryInfo();
-      return JSON.parse(infoJson);
+      const info = await ChargingModule.getBatteryInfo();
+      return info;
     } catch (error) {
       console.error('Error obteniendo info de batería:', error);
       return null;

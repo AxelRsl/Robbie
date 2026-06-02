@@ -42,7 +42,8 @@ public class RobbieConfigModule extends ReactContextBaseJavaModule {
             public void onSuccess(JSONObject config) {
                 try {
                     Log.i(TAG, "[RobbieConfig] Configuración recibida");
-                    promise.resolve(config.toString());
+                    WritableMap map = jsonToWritableMap(config);
+                    promise.resolve(map);
                 } catch (Exception e) {
                     Log.e(TAG, "[RobbieConfig] Error converting config", e);
                     promise.reject("PARSE_ERROR", e.getMessage());

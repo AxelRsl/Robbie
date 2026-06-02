@@ -44,7 +44,7 @@ public class VoiceInteractionTracker {
      * @param contextName El contexto o modo en el que está el robot ("Robbie Retail", "Robbie Menu", etc.)
      * @param answer La respuesta completa que el bot dictó.
      * @param isFinal true si el TTS ya finalizó la respuesta.
-     * @param activeTargetId ID del usuario rastreado por RobbieFaceTrackManager, o -1 si ninguno.
+     * @param activeTargetId ID del usuario rastreado, o -1 si ninguno.
      */
     public void finishInteraction(String contextName, String answer, boolean isFinal, int activeTargetId) {
         if (!isFinal) return;

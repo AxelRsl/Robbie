@@ -59,26 +59,28 @@ public class ProductSearchModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void searchProducts(String query, Promise promise) {
-        try {
-            Log.i(TAG, "Buscando productos: " + query);
-            List<ProductEntity> products = ProductSemanticMatcher.search(
-                productDao.getAllProductsBlocking(),
-                query,
-                50
-            );
-            WritableArray results = convertProductsToWritableArray(products);
-            
-            WritableMap response = new WritableNativeMap();
-            response.putArray("products", results);
-            response.putInt("totalResults", products.size());
-            response.putString("query", query);
-            
-            Log.i(TAG, "Encontrados " + products.size() + " productos");
-            promise.resolve(response);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en searchProducts", e);
-            promise.reject("SEARCH_ERROR", e.getMessage());
-        }
+        new Thread(() -> {
+            try {
+                Log.i(TAG, "Buscando productos: " + query);
+                List<ProductEntity> products = ProductSemanticMatcher.search(
+                    productDao.getAllProductsBlocking(),
+                    query,
+                    50
+                );
+                WritableArray results = convertProductsToWritableArray(products);
+
+                WritableMap response = new WritableNativeMap();
+                response.putArray("products", results);
+                response.putInt("totalResults", products.size());
+                response.putString("query", query);
+
+                Log.i(TAG, "Encontrados " + products.size() + " productos");
+                promise.resolve(response);
+            } catch (Exception e) {
+                Log.e(TAG, "Error en searchProducts", e);
+                promise.reject("SEARCH_ERROR", e.getMessage());
+            }
+        }).start();
     }
 
     /**
@@ -88,21 +90,23 @@ public class ProductSearchModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void getProductsByCategory(String category, Promise promise) {
-        try {
-            Log.i(TAG, "Buscando productos por categoría: " + category);
-            List<ProductEntity> products = productDao.getProductsByCategory(category);
-            WritableArray results = convertProductsToWritableArray(products);
-            
-            WritableMap response = new WritableNativeMap();
-            response.putArray("products", results);
-            response.putInt("totalResults", products.size());
-            response.putString("category", category);
-            
-            promise.resolve(response);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en getProductsByCategory", e);
-            promise.reject("CATEGORY_ERROR", e.getMessage());
-        }
+        new Thread(() -> {
+            try {
+                Log.i(TAG, "Buscando productos por categoría: " + category);
+                List<ProductEntity> products = productDao.getProductsByCategory(category);
+                WritableArray results = convertProductsToWritableArray(products);
+
+                WritableMap response = new WritableNativeMap();
+                response.putArray("products", results);
+                response.putInt("totalResults", products.size());
+                response.putString("category", category);
+
+                promise.resolve(response);
+            } catch (Exception e) {
+                Log.e(TAG, "Error en getProductsByCategory", e);
+                promise.reject("CATEGORY_ERROR", e.getMessage());
+            }
+        }).start();
     }
 
     /**
@@ -112,23 +116,25 @@ public class ProductSearchModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void getTopProducts(int limit, Promise promise) {
-        try {
-            Log.i(TAG, "Obteniendo top " + limit + " productos");
-            List<ProductEntity> allProducts = productDao.getAllProductsBlocking();
-            int actualLimit = Math.min(limit, allProducts.size());
-            List<ProductEntity> topProducts = allProducts.subList(0, actualLimit);
-            
-            WritableArray results = convertProductsToWritableArray(topProducts);
-            
-            WritableMap response = new WritableNativeMap();
-            response.putArray("products", results);
-            response.putInt("totalResults", topProducts.size());
-            
-            promise.resolve(response);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en getTopProducts", e);
-            promise.reject("TOP_ERROR", e.getMessage());
-        }
+        new Thread(() -> {
+            try {
+                Log.i(TAG, "Obteniendo top " + limit + " productos");
+                List<ProductEntity> allProducts = productDao.getAllProductsBlocking();
+                int actualLimit = Math.min(limit, allProducts.size());
+                List<ProductEntity> topProducts = allProducts.subList(0, actualLimit);
+
+                WritableArray results = convertProductsToWritableArray(topProducts);
+
+                WritableMap response = new WritableNativeMap();
+                response.putArray("products", results);
+                response.putInt("totalResults", topProducts.size());
+
+                promise.resolve(response);
+            } catch (Exception e) {
+                Log.e(TAG, "Error en getTopProducts", e);
+                promise.reject("TOP_ERROR", e.getMessage());
+            }
+        }).start();
     }
 
     /**
@@ -137,20 +143,22 @@ public class ProductSearchModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void getAllProducts(Promise promise) {
-        try {
-            Log.i(TAG, "Obteniendo todos los productos");
-            List<ProductEntity> products = productDao.getAllProductsBlocking();
-            WritableArray results = convertProductsToWritableArray(products);
-            
-            WritableMap response = new WritableNativeMap();
-            response.putArray("products", results);
-            response.putInt("totalResults", products.size());
-            
-            promise.resolve(response);
-        } catch (Exception e) {
-            Log.e(TAG, "Error en getAllProducts", e);
-            promise.reject("ALL_ERROR", e.getMessage());
-        }
+        new Thread(() -> {
+            try {
+                Log.i(TAG, "Obteniendo todos los productos");
+                List<ProductEntity> products = productDao.getAllProductsBlocking();
+                WritableArray results = convertProductsToWritableArray(products);
+
+                WritableMap response = new WritableNativeMap();
+                response.putArray("products", results);
+                response.putInt("totalResults", products.size());
+
+                promise.resolve(response);
+            } catch (Exception e) {
+                Log.e(TAG, "Error en getAllProducts", e);
+                promise.reject("ALL_ERROR", e.getMessage());
+            }
+        }).start();
     }
 
     /**
@@ -160,20 +168,22 @@ public class ProductSearchModule extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void getProductById(String productId, Promise promise) {
-        try {
-            Log.i(TAG, "Buscando producto por ID: " + productId);
-            ProductEntity product = productDao.getProductById(productId);
-            
-            if (product != null) {
-                WritableMap productMap = convertProductToWritableMap(product);
-                promise.resolve(productMap);
-            } else {
-                promise.resolve(null);
+        new Thread(() -> {
+            try {
+                Log.i(TAG, "Buscando producto por ID: " + productId);
+                ProductEntity product = productDao.getProductById(productId);
+
+                if (product != null) {
+                    WritableMap productMap = convertProductToWritableMap(product);
+                    promise.resolve(productMap);
+                } else {
+                    promise.resolve(null);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error en getProductById", e);
+                promise.reject("ID_ERROR", e.getMessage());
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Error en getProductById", e);
-            promise.reject("ID_ERROR", e.getMessage());
-        }
+        }).start();
     }
 
     /**

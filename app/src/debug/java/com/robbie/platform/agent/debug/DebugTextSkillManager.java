@@ -41,6 +41,32 @@ public class DebugTextSkillManager {
             return;
         }
         String normalizedText = text.trim();
+
+        // Handle debug commands: __cmd:wakefree_off, __cmd:wakefree_on, __cmd:mic_unmute
+        if (normalizedText.startsWith("__cmd:")) {
+            String cmd = normalizedText.substring(6);
+            Log.i(TAG, "Debug command: " + cmd);
+            mainHandler.post(() -> {
+                switch (cmd) {
+                    case "wakefree_off":
+                        AgentCore.INSTANCE.setEnableWakeFree(false);
+                        Log.i(TAG, "Wake-free DISABLED (unconditional listening)");
+                        break;
+                    case "wakefree_on":
+                        AgentCore.INSTANCE.setEnableWakeFree(true);
+                        Log.i(TAG, "Wake-free ENABL ED");
+                        break;
+                    case "mic_unmute":
+                        AgentCore.INSTANCE.setMicrophoneMuted(false);
+                        Log.i(TAG, "Microphone UNMUTED");
+                        break;
+                    default:
+                        Log.w(TAG, "Unknown debug command: " + cmd);
+                }
+            });
+            return;
+        }
+
         Log.i(TAG, "Dispatching debug query through AgentCore: " + normalizedText);
         mainHandler.post(new Runnable() {
             @Override

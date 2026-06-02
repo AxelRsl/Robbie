@@ -253,14 +253,8 @@ public class RobbieRetailActivity extends EveActivity {
                 if (transcription.getFinal()) {
                     Log.d(TAG, "Retail TTS finalizado: " + transcription.getText());
 
-                    int activeTargetId = -1;
-                    if (com.robbie.platform.agent.RobotActionHandler.getInstance() != null
-                            && com.robbie.platform.agent.RobotActionHandler.getInstance().getFaceTrackSnapshot() != null) {
-                        Integer targetId = com.robbie.platform.agent.RobotActionHandler.getInstance().getFaceTrackSnapshot().getActiveTargetId();
-                        if (targetId != null) activeTargetId = targetId;
-                    }
                     com.robbie.platform.voice.VoiceInteractionTracker.getInstance()
-                            .finishInteraction("Robbie Retail", transcription.getText(), true, activeTargetId);
+                            .finishInteraction("Robbie Retail", transcription.getText(), true, -1);
 
                     AgentCore.INSTANCE.setEnableWakeFree(true);
                 }

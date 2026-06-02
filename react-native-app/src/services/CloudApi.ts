@@ -54,10 +54,9 @@ class CloudApiService {
   async getConfig(): Promise<any> {
     console.log('[CloudApi] getConfig llamado');
     try {
-      const json = await RobbieConfig.getConfig();
-      console.log('[CloudApi] Configuración recibida:', json?.substring(0, 200));
-      const config = JSON.parse(json);
-      console.log('[CloudApi] Config parseada - validScreens:', config.validScreens);
+      const config = await RobbieConfig.getConfig();
+      console.log('[CloudApi] Configuración recibida');
+      console.log('[CloudApi] Config - validScreens:', config?.validScreens);
       return config;
     } catch (error) {
       console.error('[CloudApi] Error obteniendo configuración:', error);
