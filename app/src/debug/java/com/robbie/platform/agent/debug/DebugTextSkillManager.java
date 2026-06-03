@@ -54,7 +54,7 @@ public class DebugTextSkillManager {
                         break;
                     case "wakefree_on":
                         AgentCore.INSTANCE.setEnableWakeFree(true);
-                        Log.i(TAG, "Wake-free ENABL ED");
+                        Log.i(TAG, "Wake-free ENABLED");
                         break;
                     case "mic_unmute":
                         AgentCore.INSTANCE.setMicrophoneMuted(false);
