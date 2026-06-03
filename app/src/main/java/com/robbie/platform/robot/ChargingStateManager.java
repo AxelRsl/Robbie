@@ -23,10 +23,10 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
     private static final int LOW_BATTERY_THRESHOLD = 20;
     private static final int FULL_BATTERY_THRESHOLD = 100;
     private static final int CHARGE_TIMEOUT_MS = 120000;
-    private static final long CHARGE_CONFIRMATION_TIMEOUT_MS = 10000L;
+    private static final long CHARGE_CONFIRMATION_TIMEOUT_MS = 30000L;
     private static final long BATTERY_EVENT_DEBOUNCE_MS = 750L;
     private static final long MALFORMED_PAYLOAD_LOG_DEBOUNCE_MS = 5000L;
-    private static final long TRANSITION_LOCK_TIMEOUT_MS = 45000L;
+    private static final long TRANSITION_LOCK_TIMEOUT_MS = 150000L;
     private static final long POST_STOP_CHARGING_SIGNAL_SUPPRESSION_MS = 8000L;
     private static final int CHARGING_TRUE_CONFIRMATION_EVENTS = 2;
     private static final int CHARGING_FALSE_CONFIRMATION_EVENTS = 2;
@@ -197,9 +197,11 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
             batteryLevel, false, true, true, autoTriggeredRequest);
 
         try {
-            api.startNaviToAutoChargeAction(chargeReqId++, CHARGE_TIMEOUT_MS, 0.3, 30000L, new ActionListener() {
+            Log.i(TAG, "Starting startNaviToAutoChargeAction reqId=" + chargeReqId + " timeout=" + CHARGE_TIMEOUT_MS);
+            api.startNaviToAutoChargeAction(chargeReqId++, CHARGE_TIMEOUT_MS, new ActionListener() {
                 @Override
                 public void onResult(int result, String responseString) throws RemoteException {
+                    Log.i(TAG, "startNavi onResult: result=" + result + " response=" + responseString);
                     if (isStaleOperation(operationToken, "start")) {
                         Log.w(TAG, "Ignoring stale start charging result callback");
                         return;
@@ -214,13 +216,14 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                         cancelChargeConfirmationTimeout();
                         isNavigatingToCharger = false;
                         isCharging = false;
-                        updateState("charge_failed", "No se pudo llegar al cargador", batteryLevel, false, false, robotApiConnected, autoTriggered);
+                        updateState("charge_failed", "No se pudo llegar al cargador (code=" + result + ")", batteryLevel, false, false, robotApiConnected, autoTriggered);
                         autoTriggered = false;
                     }
                 }
 
                 @Override
                 public void onError(int errorCode, String errorString) throws RemoteException {
+                    Log.e(TAG, "startNavi onError: code=" + errorCode + " msg=" + errorString);
                     if (isStaleOperation(operationToken, "start")) {
                         Log.w(TAG, "Ignoring stale start charging error callback");
                         return;
@@ -229,12 +232,13 @@ public class ChargingStateManager implements RobotApiService.ConnectionListener 
                     cancelChargeConfirmationTimeout();
                     isNavigatingToCharger = false;
                     isCharging = false;
-                    updateState("charge_failed", "Error: " + errorString, batteryLevel, false, false, robotApiConnected, autoTriggered);
+                    updateState("charge_failed", "Error: " + errorString + " (code=" + errorCode + ")", batteryLevel, false, false, robotApiConnected, autoTriggered);
                     autoTriggered = false;
                 }
 
                 @Override
                 public void onStatusUpdate(int statusCode, String data) throws RemoteException {
+                    Log.i(TAG, "startNavi onStatusUpdate: code=" + statusCode + " data=" + data);
                     if (isStaleOperation(operationToken, "start")) {
                         return;
                     }

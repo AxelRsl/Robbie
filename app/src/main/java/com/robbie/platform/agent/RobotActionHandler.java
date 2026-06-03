@@ -63,6 +63,10 @@ public class RobotActionHandler {
     private int noPersonCount = 0;
     private static final int NO_PERSON_THRESHOLD = 5;
     private static final long PERSON_POLL_INTERVAL_MS = 1500;
+    private static final int HEAD_ANGLE_DEADZONE = 5;
+    private static final int HEAD_VERTICAL_NEUTRAL = 55;
+    private int headReqId = 9001;
+    private int lastHeadHAngle = 0;
     private final Runnable personPollRunnable = () -> pollPersonApi();
     private boolean isNavigating = false;
     private boolean isChargingMode = false;
@@ -871,12 +875,14 @@ public class RobotActionHandler {
                             + " dist=" + String.format("%.2f", f.getDistance()));
                     notifyPersonVisibilityChanged(true);
                 }
+                trackHead(f);
             } else {
                 noPersonCount++;
                 if (isPersonNearby && noPersonCount >= NO_PERSON_THRESHOLD) {
                     isPersonNearby = false;
                     Log.i(TAG, "[PersonPoll] Person LEFT (no face for " + noPersonCount + " polls)");
                     notifyPersonVisibilityChanged(false);
+                    resetHead();
                 }
             }
         } catch (Exception e) {
@@ -884,6 +890,39 @@ public class RobotActionHandler {
         }
         if (personPollRunning) {
             mainHandler.postDelayed(personPollRunnable, PERSON_POLL_INTERVAL_MS);
+        }
+    }
+
+    private void trackHead(Person person) {
+        if (robotApi == null || !robotApiConnected) return;
+        int targetH = Math.max(-120, Math.min(120, person.getAngle()));
+        if (Math.abs(targetH - lastHeadHAngle) < HEAD_ANGLE_DEADZONE) return;
+        lastHeadHAngle = targetH;
+        try {
+            robotApi.moveHead(headReqId++, "absolute", "absolute",
+                    targetH, HEAD_VERTICAL_NEUTRAL, new CommandListener() {
+                @Override
+                public void onResult(int result, String message) {
+                    Log.d(TAG, "[HeadTrack] moved to h=" + targetH + " result=" + result);
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "[HeadTrack] moveHead error: " + e.getMessage());
+        }
+    }
+
+    private void resetHead() {
+        if (robotApi == null || !robotApiConnected) return;
+        lastHeadHAngle = 0;
+        try {
+            robotApi.resetHead(headReqId++, new CommandListener() {
+                @Override
+                public void onResult(int result, String message) {
+                    Log.d(TAG, "[HeadTrack] head reset result=" + result);
+                }
+            });
+        } catch (Exception e) {
+            Log.w(TAG, "[HeadTrack] resetHead error: " + e.getMessage());
         }
     }
 
