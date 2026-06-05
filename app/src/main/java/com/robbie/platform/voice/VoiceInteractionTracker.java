@@ -71,10 +71,21 @@ public class VoiceInteractionTracker {
 
             Log.i(TAG, "Guardando interaccion finalizada de " + durationSecs + "s para " + userId);
             
-            VoiceReportHandler.logInteraction(
-                contextName, lastUserQuestion, answer != null ? answer : "", 
-                durationSecs, resolved, userId, startedAtMs, endedAtMs
-            );
+            // Capture values before finally block resets state
+            final String question = lastUserQuestion;
+            final String safeAnswer = answer != null ? answer : "";
+            final long finalDuration = durationSecs;
+            final boolean finalResolved = resolved;
+            final String finalUserId = userId;
+            final long finalStartedAt = startedAtMs;
+            final long finalEndedAt = endedAtMs;
+            // Offload file I/O to background thread to avoid blocking UI
+            com.robbie.platform.retail.AsyncTaskHelper.execute(() -> {
+                VoiceReportHandler.logInteraction(
+                    contextName, question, safeAnswer, 
+                    finalDuration, finalResolved, finalUserId, finalStartedAt, finalEndedAt
+                );
+            });
 
         } finally {
             lastUserQuestion = "";

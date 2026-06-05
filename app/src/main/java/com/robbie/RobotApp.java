@@ -157,26 +157,29 @@ public class RobotApp extends Application implements ReactApplication {
     }
 
     private void uploadProductsToAgent(RobbieConfig config) {
-        try {
-            int productCount = 0;
+        // DB query on background thread to avoid blocking main thread during startup
+        com.robbie.platform.retail.AsyncTaskHelper.execute(() -> {
             try {
-                com.robbie.data.local.RobbieDatabase db = com.robbie.data.local.RobbieDatabase.getInstance(this);
-                java.util.List<com.robbie.data.local.entity.ProductEntity> dbProducts = db.productDao().getAllProductsSync();
-                if (dbProducts != null) {
-                    productCount = dbProducts.size();
+                int productCount = 0;
+                try {
+                    com.robbie.data.local.RobbieDatabase db = com.robbie.data.local.RobbieDatabase.getInstance(this);
+                    java.util.List<com.robbie.data.local.entity.ProductEntity> dbProducts = db.productDao().getAllProductsSync();
+                    if (dbProducts != null) {
+                        productCount = dbProducts.size();
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not read products from DB", e);
                 }
+
+                if (productCount == 0 && config.getProducts() != null) {
+                    productCount = config.getProducts().size();
+                }
+
+                Log.i(TAG, "Catalog loaded for retail flow: " + productCount + " products. Using lightweight page-level interface info only.");
             } catch (Exception e) {
-                Log.w(TAG, "Could not read products from DB", e);
+                Log.e(TAG, "Error reading product catalog state", e);
             }
-
-            if (productCount == 0 && config.getProducts() != null) {
-                productCount = config.getProducts().size();
-            }
-
-            Log.i(TAG, "Catalog loaded for retail flow: " + productCount + " products. Using lightweight page-level interface info only.");
-        } catch (Exception e) {
-            Log.e(TAG, "Error reading product catalog state", e);
-        }
+        });
     }
 
     public RobbieConfig getRobbieConfig() {

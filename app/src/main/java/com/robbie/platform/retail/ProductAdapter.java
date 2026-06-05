@@ -9,6 +9,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
@@ -30,8 +31,27 @@ public class ProductAdapter extends RecyclerView.Adapter<ProductAdapter.ProductV
     }
 
     public void setProducts(List<Product> newProducts) {
-        this.products = new ArrayList<>(newProducts);
-        notifyDataSetChanged();
+        List<Product> oldProducts = this.products;
+        List<Product> updated = new ArrayList<>(newProducts);
+        DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+            @Override public int getOldListSize() { return oldProducts.size(); }
+            @Override public int getNewListSize() { return updated.size(); }
+            @Override public boolean areItemsTheSame(int oldPos, int newPos) {
+                String oldId = oldProducts.get(oldPos).getId();
+                String newId = updated.get(newPos).getId();
+                return oldId != null && oldId.equals(newId);
+            }
+            @Override public boolean areContentsTheSame(int oldPos, int newPos) {
+                Product o = oldProducts.get(oldPos);
+                Product n = updated.get(newPos);
+                return o.getPrice() == n.getPrice()
+                    && o.getDiscount() == n.getDiscount()
+                    && o.isAiRecommended() == n.isAiRecommended()
+                    && String.valueOf(o.getName()).equals(String.valueOf(n.getName()));
+            }
+        });
+        this.products = updated;
+        diff.dispatchUpdatesTo(this);
     }
 
     @NonNull

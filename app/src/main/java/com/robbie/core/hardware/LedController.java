@@ -29,6 +29,10 @@ public class LedController {
     private static final String TAG = "LedController";
     private static volatile LedController sInstance;
 
+    // LED hardware no disponible en esta unidad — deshabilitado temporalmente
+    // TODO: rehabilitar cuando se confirme soporte de hardware
+    private static final boolean HARDWARE_ENABLED = false;
+
 // private static final int IKALP_PRIMARY = 0xE4027C;
     private static final int IKALP_PRIMARY = 0xFFFF00; // Color por defecto (Amarillo)
     private static final int COLOR_LISTENING = 0xE4027C;
@@ -123,6 +127,10 @@ public class LedController {
      */
     public void startEffect(LedEffect effect, int color) {
         stopEffect();
+        if (!HARDWARE_ENABLED) {
+            Log.d(TAG, "LED hardware disabled — skipping effect: " + effect.name());
+            return;
+        }
         currentEffect = effect;
         currentColor = color;
         effectRunning = true;
@@ -230,6 +238,10 @@ public class LedController {
      * Mapea efectos ZCB2UARTLED a colores RGB equivalentes
      */
     public void setPredefinedEffect(int effect) {
+        if (!HARDWARE_ENABLED) {
+            Log.d(TAG, "LED hardware disabled — skipping predefined effect: 0x" + Integer.toHexString(effect));
+            return;
+        }
         try {
             RobotApi api = RobotApi.getInstance();
             if (api == null) {
@@ -378,7 +390,7 @@ public class LedController {
                     step[0]--;
                     if (step[0] <= 0) increasing[0] = true;
                 }
-                handler.postDelayed(this, 80);
+                handler.postDelayed(this, 120);
             }
         };
         handler.post(effectRunnable);
@@ -406,9 +418,9 @@ public class LedController {
                 if (!effectRunning) return;
                 int color = hsvToRgb(hue[0], 1.0f, 1.0f);
                 applyColor(color, LedZone.ALL);
-                hue[0] += 5;
+                hue[0] += 15;
                 if (hue[0] >= 360) hue[0] = 0;
-                handler.postDelayed(this, 50);
+                handler.postDelayed(this, 200);
             }
         };
         handler.post(effectRunnable);
@@ -437,7 +449,7 @@ public class LedController {
                     factor[0] -= 0.1f;
                     if (factor[0] <= 0.3f) increasing[0] = true;
                 }
-                handler.postDelayed(this, 60);
+                handler.postDelayed(this, 150);
             }
         };
         handler.post(effectRunnable);
@@ -466,6 +478,7 @@ public class LedController {
     }
 
     private void applyColor(int color, LedZone zone) {
+        if (!HARDWARE_ENABLED) return;
         try {
             RobotApi api = RobotApi.getInstance();
             if (api == null) {

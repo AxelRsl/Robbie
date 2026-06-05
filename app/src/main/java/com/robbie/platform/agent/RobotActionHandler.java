@@ -24,8 +24,6 @@ import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.CommandListener;
 import com.ainirobot.coreservice.client.Definition;
-import com.ainirobot.coreservice.client.person.PersonApi;
-import com.ainirobot.coreservice.client.listener.Person;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -58,16 +56,8 @@ public class RobotActionHandler {
     private int lightReqId = 2001;
     private int navReqId = 3001;
     private boolean robotApiConnected = false;
-    private boolean personPollRunning = false;
-    private boolean isPersonNearby = false;
-    private int noPersonCount = 0;
-    private static final int NO_PERSON_THRESHOLD = 5;
-    private static final long PERSON_POLL_INTERVAL_MS = 1500;
-    private static final int HEAD_ANGLE_DEADZONE = 5;
-    private static final int HEAD_VERTICAL_NEUTRAL = 55;
-    private int headReqId = 9001;
-    private int lastHeadHAngle = 0;
-    private final Runnable personPollRunnable = () -> pollPersonApi();
+    private final PersonTrackingHandler trackingHandler;
+    private final TourGuideHandler tourHandler;
     private boolean isNavigating = false;
     private boolean isChargingMode = false;
     private boolean isNavigatingToCharger = false;
@@ -99,6 +89,43 @@ public class RobotActionHandler {
     public RobotActionHandler(android.content.Context context) {
         this.context = context.getApplicationContext();
         this.animationManager = ProceduralAnimationManager.getInstance(this.context);
+        this.trackingHandler = new PersonTrackingHandler(mainHandler, this.context);
+        this.trackingHandler.setNavigationStateSupplier(new PersonTrackingHandler.NavigationStateSupplier() {
+            @Override
+            public boolean isNavigating() {
+                return RobotActionHandler.this.isNavigating;
+            }
+            @Override
+            public boolean isNavigatingToCharger() {
+                return RobotActionHandler.this.isNavigatingToCharger;
+            }
+        });
+        this.trackingHandler.setTrackingListener(new PersonTrackingHandler.PersonTrackingListener() {
+            @Override
+            public void onPersonVisibilityChanged(boolean visible, int faceId) {
+                RobotActionHandler.this.notifyPersonVisibilityChanged(visible);
+            }
+            @Override
+            public void onTrackingActionChanged(PersonTrackingHandler.TrackingAction action) {
+                Log.d(TAG, "Tracking action changed: " + action);
+            }
+        });
+        this.tourHandler = new TourGuideHandler(mainHandler, this.context, RobbieDatabase.getInstance(this.context));
+        this.tourHandler.setTourGuideListener(new TourGuideHandler.TourGuideListener() {
+            @Override
+            public void onTourStarted(String tourId) {
+                Log.d(TAG, "tour started: " + tourId);
+            }
+            @Override
+            public void onTourStopped(String tourId) {
+                Log.d(TAG, "tour stopped: " + tourId);
+            }
+            @Override
+            public void onTourError(String reason) {
+                Log.w(TAG, "tour error: " + reason);
+                if (agentBridge != null) agentBridge.tts(reason, 10000);
+            }
+        });
         instance = this;
     }
 
@@ -120,18 +147,22 @@ public class RobotActionHandler {
                 }
             });
             mainHandler.post(() -> LedController.getInstance().restoreDefault());
+            trackingHandler.setRobotApi(connectedRobotApi);
+            tourHandler.setRobotApi(connectedRobotApi);
             chargingStateManager.disableBatteryUi();
         }
 
         @Override
         public void onRobotApiDisconnected() {
             robotApiConnected = false;
+            trackingHandler.onRobotApiDisconnected();
             Log.w(TAG, "RobotApi disconnected");
         }
 
         @Override
         public void onRobotApiDisabled() {
             robotApiConnected = false;
+            trackingHandler.onRobotApiDisconnected();
             Log.w(TAG, "RobotApi disabled");
         }
     };
@@ -298,11 +329,15 @@ public class RobotActionHandler {
             case "com.robbie.action.RESTORE_LED_DEFAULT":
                 handled = handleRestoreLedDefault();
                 break;
-            case "com.robbie.action.START_TOUR":
-                handled = handleStartTour(params);
+            case "com.robbie.action.START_TOUR": {
+                String routeName = params != null ? params.getString("routeName", "") : "";
+                tourHandler.startTour(routeName);
+                handled = true;
                 break;
+            }
             case "com.robbie.action.STOP_TOUR":
-                handled = handleStopTour();
+                tourHandler.stopTour();
+                handled = true;
                 break;
             case "com.robbie.action.SWITCH_MODE":
                 handled = handleSwitchMode(params);
@@ -839,92 +874,21 @@ public class RobotActionHandler {
         return true;
     }
 
-    // ==================== Face Tracking ====================
+    // ==================== Face Tracking (delegated to PersonTrackingHandler) ====================
 
     public boolean isPersonNearby() {
-        return isPersonNearby;
+        return trackingHandler.isPersonNearby();
     }
 
     public void startFaceTracking() {
         ensureRobotServicesStarted();
-        personPollRunning = true;
-        mainHandler.removeCallbacks(personPollRunnable);
-        mainHandler.postDelayed(personPollRunnable, PERSON_POLL_INTERVAL_MS);
-        Log.i(TAG, "PersonApi polling started (wake-free workaround)");
+        trackingHandler.startTracking();
     }
 
     public void stopFaceTracking() {
-        personPollRunning = false;
-        mainHandler.removeCallbacks(personPollRunnable);
-        Log.i(TAG, "PersonApi polling stopped");
+        trackingHandler.stopTracking();
     }
 
-    private void pollPersonApi() {
-        if (!personPollRunning) return;
-        try {
-            PersonApi pApi = PersonApi.getInstance();
-            List<Person> faces = pApi.getAllFaceList();
-            boolean faceDetected = faces != null && !faces.isEmpty();
-
-            if (faceDetected) {
-                noPersonCount = 0;
-                Person f = faces.get(0);
-                if (!isPersonNearby) {
-                    isPersonNearby = true;
-                    Log.i(TAG, "[PersonPoll] Person ARRIVED angle=" + f.getAngle()
-                            + " dist=" + String.format("%.2f", f.getDistance()));
-                    notifyPersonVisibilityChanged(true);
-                }
-                trackHead(f);
-            } else {
-                noPersonCount++;
-                if (isPersonNearby && noPersonCount >= NO_PERSON_THRESHOLD) {
-                    isPersonNearby = false;
-                    Log.i(TAG, "[PersonPoll] Person LEFT (no face for " + noPersonCount + " polls)");
-                    notifyPersonVisibilityChanged(false);
-                    resetHead();
-                }
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "[PersonPoll] error: " + e.getMessage());
-        }
-        if (personPollRunning) {
-            mainHandler.postDelayed(personPollRunnable, PERSON_POLL_INTERVAL_MS);
-        }
-    }
-
-    private void trackHead(Person person) {
-        if (robotApi == null || !robotApiConnected) return;
-        int targetH = Math.max(-120, Math.min(120, person.getAngle()));
-        if (Math.abs(targetH - lastHeadHAngle) < HEAD_ANGLE_DEADZONE) return;
-        lastHeadHAngle = targetH;
-        try {
-            robotApi.moveHead(headReqId++, "absolute", "absolute",
-                    targetH, HEAD_VERTICAL_NEUTRAL, new CommandListener() {
-                @Override
-                public void onResult(int result, String message) {
-                    Log.d(TAG, "[HeadTrack] moved to h=" + targetH + " result=" + result);
-                }
-            });
-        } catch (Exception e) {
-            Log.w(TAG, "[HeadTrack] moveHead error: " + e.getMessage());
-        }
-    }
-
-    private void resetHead() {
-        if (robotApi == null || !robotApiConnected) return;
-        lastHeadHAngle = 0;
-        try {
-            robotApi.resetHead(headReqId++, new CommandListener() {
-                @Override
-                public void onResult(int result, String message) {
-                    Log.d(TAG, "[HeadTrack] head reset result=" + result);
-                }
-            });
-        } catch (Exception e) {
-            Log.w(TAG, "[HeadTrack] resetHead error: " + e.getMessage());
-        }
-    }
 
     private void notifyPersonVisibilityChanged(boolean visible) {
         if (agentBridge != null) {
@@ -1105,7 +1069,7 @@ public class RobotActionHandler {
             return;
         }
 
-        // Stop face tracking and navigation if active
+        // Stop face tracking, focus follow and navigation if active
         if (isNavigating) stopNavigation();
         stopFaceTracking();
         chargingStateManager.requestStartCharging(autoTriggered);
@@ -1143,6 +1107,8 @@ public class RobotActionHandler {
         robotApiService.removeConnectionListener(robotApiConnectionListener);
         stopBatteryMonitor();
         stopFaceTracking();
+        trackingHandler.destroy();
+        tourHandler.destroy();
         robotApiService.release(SERVICE_OWNER);
         robotServicesStarted = false;
     }
@@ -1155,129 +1121,4 @@ public class RobotActionHandler {
         return mapPlaces;
     }
 
-    // ==================== Tour ====================
-
-    private boolean handleStartTour(Bundle params) {
-        String routeName = params != null ? params.getString("routeName", "") : "";
-        Log.d(TAG, "START_TOUR: routeName=" + routeName);
-
-        mainHandler.post(() -> {
-            try {
-                TourExecutor executor = TourExecutor.getInstance();
-                if (executor.isRunning()) {
-                    if (agentBridge != null)
-                        agentBridge.tts("Ya hay un tour en curso. Si quieres, puedo detenerlo primero.", 10000);
-                    return;
-                }
-
-                // Wire chassis controller so TourExecutor can stop/start face tracking
-                executor.setChassisController(new TourExecutor.ChassisController() {
-                    @Override
-                    public void stopFaceTracking() {
-                        RobotActionHandler.this.stopFaceTracking();
-                    }
-                    @Override
-                    public void startFaceTracking() {
-                        RobotActionHandler.this.startFaceTracking();
-                    }
-                });
-
-                // Load published routes from DB
-                RobbieDatabase db = RobbieDatabase.getInstance(context);
-                com.robbie.data.local.entity.ConfigEntity entity = db.configDao().getConfig("tour_routes");
-                if (entity == null || entity.getValue() == null) {
-                    if (agentBridge != null)
-                        agentBridge.tts("No hay tours configurados. Puedes crear uno desde el panel de administracion.", 10000);
-                    return;
-                }
-
-                org.json.JSONArray routesArray = new org.json.JSONArray(entity.getValue());
-                java.util.Map<String, Object> selectedRoute = null;
-
-                for (int i = 0; i < routesArray.length(); i++) {
-                    org.json.JSONObject routeJson = routesArray.getJSONObject(i);
-                    boolean published = routeJson.optBoolean("published", false);
-                    if (!published) continue;
-
-                    String name = routeJson.optString("name", "");
-                    if (!routeName.isEmpty() && name.toLowerCase().contains(routeName.toLowerCase())) {
-                        selectedRoute = jsonObjectToMap(routeJson);
-                        break;
-                    }
-                    if (selectedRoute == null) {
-                        selectedRoute = jsonObjectToMap(routeJson);
-                    }
-                }
-
-                if (selectedRoute == null) {
-                    if (agentBridge != null)
-                        agentBridge.tts("No encontre ningun tour publicado. Crea y publica uno desde el panel.", 10000);
-                    return;
-                }
-
-                String tourName = (String) selectedRoute.get("name");
-                Object stopsObj = selectedRoute.get("stops");
-                if (!(stopsObj instanceof java.util.List)) {
-                    if (agentBridge != null)
-                        agentBridge.tts("El tour " + tourName + " no tiene paradas configuradas.", 10000);
-                    return;
-                }
-
-                @SuppressWarnings("unchecked")
-                java.util.List<java.util.Map<String, Object>> stops =
-                    (java.util.List<java.util.Map<String, Object>>) stopsObj;
-
-                String routeId = (String) selectedRoute.get("id");
-                executor.startTour(routeId, tourName, stops);
-                Log.i(TAG, "Tour started via voice: " + tourName);
-            } catch (Exception e) {
-                Log.e(TAG, "Error starting tour", e);
-                if (agentBridge != null)
-                    agentBridge.tts("Lo siento, hubo un error al iniciar el tour.", 10000);
-            }
-        });
-        return true;
-    }
-
-    private boolean handleStopTour() {
-        Log.d(TAG, "STOP_TOUR");
-        mainHandler.post(() -> {
-            TourExecutor executor = TourExecutor.getInstance();
-            if (executor.isRunning()) {
-                executor.stopTour();
-            } else {
-                if (agentBridge != null)
-                    agentBridge.tts("No hay ningun tour en curso.", 8000);
-            }
-        });
-        return true;
-    }
-
-    @SuppressWarnings("unchecked")
-    private java.util.Map<String, Object> jsonObjectToMap(org.json.JSONObject json) {
-        java.util.Map<String, Object> map = new java.util.HashMap<>();
-        java.util.Iterator<String> keys = json.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            Object val = json.opt(key);
-            if (val instanceof org.json.JSONArray) {
-                java.util.List<Object> list = new java.util.ArrayList<>();
-                org.json.JSONArray arr = (org.json.JSONArray) val;
-                for (int i = 0; i < arr.length(); i++) {
-                    Object item = arr.opt(i);
-                    if (item instanceof org.json.JSONObject) {
-                        list.add(jsonObjectToMap((org.json.JSONObject) item));
-                    } else {
-                        list.add(item);
-                    }
-                }
-                map.put(key, list);
-            } else if (val instanceof org.json.JSONObject) {
-                map.put(key, jsonObjectToMap((org.json.JSONObject) val));
-            } else {
-                map.put(key, val);
-            }
-        }
-        return map;
-    }
 }
