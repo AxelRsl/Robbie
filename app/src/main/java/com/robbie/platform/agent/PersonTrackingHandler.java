@@ -11,10 +11,6 @@ import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.Person;
 import com.ainirobot.coreservice.client.person.PersonApi;
 import com.ainirobot.coreservice.client.person.PersonListener;
-import com.robbie.platform.oem.person.TrackedPerson;
-import com.robbie.platform.retail.AsyncTaskHelper;
-
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -34,7 +30,6 @@ public class PersonTrackingHandler {
     private static final String TAG = "PersonTracking";
 
     private static final int NO_PERSON_THRESHOLD = 3;
-    private static final long PERSON_POLL_INTERVAL_MS = 1500;
     private static final long FOCUS_LOST_TIMEOUT_MS = 3000;
     private static final float FOCUS_MAX_DISTANCE = 3.0f;
     private static final float PROXIMITY_STOP_DISTANCE = 0.5f;
@@ -56,7 +51,6 @@ public class PersonTrackingHandler {
     // ── Internal state ──
     private int noPersonCount = 0;
     private int focusReqId = -1;
-    private Runnable personPollRunnable;
     private boolean robotApiConnected = false;
     private float lastKnownDistance = 0f;
     private long faceLostTimestamp = 0;
@@ -73,7 +67,6 @@ public class PersonTrackingHandler {
     public PersonTrackingHandler(Handler mainHandler, Context context) {
         this.mainHandler = mainHandler;
         this.context = context.getApplicationContext();
-        this.personPollRunnable = () -> pollPersonApi();
         workerThread = new HandlerThread("PersonTrackingWorker");
         workerThread.start();
         workerHandler = new Handler(workerThread.getLooper());
@@ -148,45 +141,15 @@ public class PersonTrackingHandler {
         robotApiConnected = false;
     }
 
-    // ══════════════════════════════════════════
-    // POLLING (offloaded to background thread)
-    // ══════════════════════════════════════════
-
-    private void pollPersonApi() {
-        if (!personPollRunning) return;
-        AsyncTaskHelper.execute(() -> {
-            List<TrackedPerson> converted = new ArrayList<>();
-            try {
-                PersonApi pApi = PersonApi.getInstance();
-                List<Person> faces = pApi.getAllFaceList();
-                if (faces != null) {
-                    for (Person p : faces) {
-                        converted.add(personToTracked(p));
-                    }
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "[Poll] error: " + e.getMessage());
-            }
-            final List<TrackedPerson> result = converted;
-            mainHandler.post(() -> {
-                if (!personPollRunning) return;
-                processPersonPollResult(result);
-                if (personPollRunning) {
-                    mainHandler.postDelayed(personPollRunnable, PERSON_POLL_INTERVAL_MS);
-                }
-            });
-        });
-    }
-
-    private void processPersonPollResult(List<TrackedPerson> faces) {
+    private void processPersonPollResult(List<Person> faces) {
         boolean faceDetected = faces != null && !faces.isEmpty();
 
         if (faceDetected) {
             noPersonCount = 0;
             cancelFaceLostTimeout();
             lastFaceSeenTimeMs = System.currentTimeMillis();
-            TrackedPerson f = faces.get(0);
-            lastKnownDistance = (float) f.getDistanceMeters();
+            Person f = faces.get(0);
+            lastKnownDistance = (float) f.getDistance();
 
             if (!isPersonNearby) {
                 isPersonNearby = true;
@@ -276,15 +239,12 @@ public class PersonTrackingHandler {
     private void refreshPersonData() {
         if (!personPollRunning) return;
         try {
-            List<Person> faces = PersonApi.getInstance()
-                .getCompleteFaceList(FOCUS_MAX_DISTANCE);
+            List<Person> faces = PersonApi.getInstance().getCompleteFaceList();
             if (faces == null || faces.isEmpty()) {
-                faces = PersonApi.getInstance()
-                    .getAllFaceList(FOCUS_MAX_DISTANCE);
+                faces = PersonApi.getInstance().getAllFaceList();
             }
-            final List<TrackedPerson> tracked =
-                toTrackedPersons(faces != null ? faces : Collections.emptyList());
-            mainHandler.post(() -> processPersonPollResult(tracked));
+            final List<Person> result = faces != null ? faces : Collections.emptyList();
+            mainHandler.post(() -> processPersonPollResult(result));
         } catch (Exception e) {
             Log.e(TAG, "REFRESH_ERROR: " + e.getMessage());
         }
@@ -301,29 +261,11 @@ public class PersonTrackingHandler {
         Log.w(TAG, "POLLING_FALLBACK: 200ms");
     }
 
-    private List<TrackedPerson> toTrackedPersons(List<Person> persons) {
-        List<TrackedPerson> result = new ArrayList<>();
-        for (Person p : persons) {
-            result.add(personToTracked(p));
-        }
-        return result;
-    }
-
-    private TrackedPerson personToTracked(Person p) {
-        return new TrackedPerson(
-            p.getId(), p.getId(), null, null,
-            p.getDistance(), 0, 0.0, 0.0, 0.0,
-            true, false, false, false, false, false, false,
-            0, 0, null, null, 0, null, null, null,
-            0.0, 0, System.currentTimeMillis(), null, null
-        );
-    }
-
     // ══════════════════════════════════════════
     // DECISION ENGINE
     // ══════════════════════════════════════════
 
-    private TrackingAction decideTrackingAction(TrackedPerson person) {
+    private TrackingAction decideTrackingAction(Person person) {
         if (person == null) {
             long elapsed = System.currentTimeMillis() - lastFaceSeenTimeMs;
             if (lastFaceSeenTimeMs == 0) return TrackingAction.DISENGAGE;
@@ -331,7 +273,7 @@ public class PersonTrackingHandler {
                 ? TrackingAction.PAUSE
                 : TrackingAction.DISENGAGE;
         }
-        float distance = (float) person.getDistanceMeters();
+        float distance = (float) person.getDistance();
         if (distance <= 0f || distance > FOCUS_MAX_DISTANCE) {
             if (outOfRangeStartMs == 0L) outOfRangeStartMs = System.currentTimeMillis();
             long outMs = System.currentTimeMillis() - outOfRangeStartMs;

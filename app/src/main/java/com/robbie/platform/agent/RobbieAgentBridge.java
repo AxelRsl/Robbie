@@ -173,7 +173,8 @@ public class RobbieAgentBridge implements IAgentBridge {
     @Override
     public void onPersonVisibilityChanged(boolean visible) {
         this.personVisible = visible;
-        Log.d(TAG, "PersonApi visibility: " + (visible ? "VISIBLE" : "GONE"));
+        AgentCore.INSTANCE.setMicrophoneMuted(!visible);
+        Log.d(TAG, "PersonApi visibility: " + (visible ? "VISIBLE — mic OPEN" : "GONE — mic MUTED"));
         if (transcriptionCallback != null) {
             boolean active = "listening".equals(lastAgentStatus)
                     || "thinking".equals(lastAgentStatus)
@@ -226,9 +227,9 @@ public class RobbieAgentBridge implements IAgentBridge {
         // Workaround: unconditional listening + PersonApi-based smart detection.
         AgentCore.INSTANCE.enableWakeupMode(false);
         AgentCore.INSTANCE.setEnableWakeFree(false);
-        AgentCore.INSTANCE.setMicrophoneMuted(false);
+        AgentCore.INSTANCE.setMicrophoneMuted(true);
         AgentCore.INSTANCE.setEnableVoiceBar(true);
-        Log.d(TAG, "Wake mode: OFF, wake-free=OFF (unconditional+PersonApi), mic=OPEN, voiceBar=ON");
+        Log.d(TAG, "Wake mode: OFF, wake-free=OFF, mic=MUTED (until person detected), voiceBar=ON");
     }
 
     public void onActivityStop() {
