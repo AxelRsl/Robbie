@@ -34,6 +34,7 @@ public class PersonTrackingHandler {
     private static final float FOCUS_MAX_DISTANCE = 3.0f;
     private static final float PROXIMITY_STOP_DISTANCE = 0.5f;
     private static final long DISENGAGE_HYSTERESIS_MS = 1000L;
+    private static final long SAFETY_POLL_INTERVAL_MS = 1500L;
 
     // ── Injected dependencies ──
     private RobotApi robotApi;
@@ -148,13 +149,14 @@ public class PersonTrackingHandler {
             noPersonCount = 0;
             cancelFaceLostTimeout();
             lastFaceSeenTimeMs = System.currentTimeMillis();
-            Person f = faces.get(0);
+            Person f = findClosestPerson(faces);
+            if (f == null) return;
             lastKnownDistance = (float) f.getDistance();
 
             if (!isPersonNearby) {
                 isPersonNearby = true;
-                lastTrackedFaceId = f.getId();
-                Log.d(TAG, "PERSON_ARRIVED: faceId=" + f.getId());
+                Log.d(TAG, "PERSON_ARRIVED: faceId=" + f.getId()
+                    + " dist=" + String.format("%.2f", f.getDistance()));
                 notifyPersonVisibilityChanged(true);
             }
 
@@ -224,16 +226,11 @@ public class PersonTrackingHandler {
             };
             boolean ok = PersonApi.getInstance()
                 .registerPersonListener(personListener);
-            if (ok) {
-                Log.d(TAG, "LISTENER_REGISTERED: event-driven");
-            } else {
-                Log.w(TAG, "LISTENER_FAILED: fallback polling");
-                startPollingFallback();
-            }
+            Log.d(TAG, ok ? "LISTENER_REGISTERED: event-driven" : "LISTENER_FAILED: poll-only");
         } catch (Exception e) {
             Log.e(TAG, "LISTENER_EXCEPTION: " + e.getMessage());
-            startPollingFallback();
         }
+        startSafetyPoll();
     }
 
     private void refreshPersonData() {
@@ -250,15 +247,35 @@ public class PersonTrackingHandler {
         }
     }
 
-    private void startPollingFallback() {
+    private void startSafetyPoll() {
         workerHandler.postDelayed(new Runnable() {
             @Override public void run() {
                 if (!personPollRunning) return;
                 refreshPersonData();
-                workerHandler.postDelayed(this, 200L);
+                workerHandler.postDelayed(this, SAFETY_POLL_INTERVAL_MS);
             }
-        }, 200L);
-        Log.w(TAG, "POLLING_FALLBACK: 200ms");
+        }, SAFETY_POLL_INTERVAL_MS);
+        Log.d(TAG, "SAFETY_POLL: " + SAFETY_POLL_INTERVAL_MS + "ms");
+    }
+
+    private Person findClosestPerson(List<Person> faces) {
+        Person closest = null;
+        double minDist = Double.MAX_VALUE;
+        for (Person p : faces) {
+            if (p.getId() < 0) continue;
+            double d = p.getDistance();
+            if (d > 0 && d < minDist) {
+                minDist = d;
+                closest = p;
+            }
+        }
+        if (closest == null) {
+            for (Person p : faces) {
+                if (p.getId() >= 0) return p;
+            }
+            return faces.isEmpty() ? null : faces.get(0);
+        }
+        return closest;
     }
 
     // ══════════════════════════════════════════
@@ -298,8 +315,12 @@ public class PersonTrackingHandler {
             return;
         }
         if (focusFollowActive) {
-            lastTrackedFaceId = faceId;
-            return;
+            if (faceId != lastTrackedFaceId) {
+                Log.d(TAG, "FOCUS_SWITCH: " + lastTrackedFaceId + " -> " + faceId);
+                stopFocusFollowIfActive();
+            } else {
+                return;
+            }
         }
         focusFollowActive = true;
         lastTrackedFaceId = faceId;
